@@ -9,13 +9,10 @@
       background: #f9fafb;
       padding: 40px;
     }
-
     h1 {
       color: #333;
       text-align: center;
-      margin-bottom: 20px;
     }
-
     form {
       background: white;
       padding: 20px;
@@ -24,14 +21,17 @@
       margin-bottom: 30px;
       text-align: center;
     }
-
-    input[type=file] {
+    input[type=file], input[type=date] {
       padding: 10px;
       border: 1px solid #ccc;
       border-radius: 5px;
-      margin-right: 10px;
+      margin: 5px;
     }
-
+    label {
+      display: inline-block;
+      margin: 0 10px;
+      font-weight: 500;
+    }
     button {
       background-color: #0078d7;
       border: none;
@@ -40,9 +40,7 @@
       border-radius: 5px;
       cursor: pointer;
     }
-
     button:hover { background-color: #005fa3; }
-
     table {
       width: 50%;
       margin: 0 auto;
@@ -50,19 +48,15 @@
       background: white;
       border: 2px solid black;
     }
-
     th, td {
       padding: 10px;
       text-align: center;
       border: 1px solid black;
     }
-
     th {
-      background-color: #ff0000; /* table header red */
+      background-color: #ff0000;
       color: white;
     }
-
-    /* Score color highlights */
     .GREEN { background-color: #008000; color: white; font-weight: bold; }
     .AMBER { background-color: #FFBF00; color: black; font-weight: bold; }
     .RED { background-color: #ff0000; color: white; font-weight: bold; }
@@ -74,9 +68,21 @@
 
   <form method="post" enctype="multipart/form-data">
     {% csrf_token %}
-    <input type="file" name="file" accept=".xls,.xlsx" required>
+    <input type="file" name="file" accept=".xls,.xlsx,.csv" required>
     <button type="submit">Upload & Calculate</button>
   </form>
+
+  {% if error %}
+  <div style="background: #fee; color: #c33; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Error:</strong> {{ error }}
+  </div>
+  {% endif %}
+
+  {% if from_date and to_date %}
+  <div style="background: #e8f4f8; color: #333; padding: 15px; border-radius: 5px; margin: 20px 0; text-align: center; font-size: 16px;">
+    <strong>Report Period:</strong> From {{ from_date }} to {{ to_date }}
+  </div>
+  {% endif %}
 
   {% if results %}
   <table>
