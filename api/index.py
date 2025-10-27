@@ -19,28 +19,7 @@ django.setup()
 # Import Django WSGI application
 from django.core.wsgi import get_wsgi_application
 
-# Get the WSGI application - this is what Vercel expects
+# Export the WSGI application directly
+# Vercel's @vercel/python expects a WSGI callable
 application = get_wsgi_application()
-
-# Export handler for Vercel
-def handler(request):
-    """
-    Vercel serverless function handler
-    Delegates to Django WSGI application
-    """
-    try:
-        return application(request)
-    except Exception as e:
-        # Log the error
-        import traceback
-        print(f"Error in Django handler: {str(e)}")
-        traceback.print_exc()
-        
-        # Return a simple error response
-        from django.http import HttpResponse
-        return HttpResponse(
-            f"Error: {str(e)}",
-            status=500,
-            content_type='text/plain'
-        )
 
