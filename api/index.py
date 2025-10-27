@@ -19,7 +19,5 @@ django.setup()
 # Import Django WSGI application
 from django.core.wsgi import get_wsgi_application
 
-# Export the WSGI application directly
-# Vercel's @vercel/python expects a WSGI callable
-application = get_wsgi_application()
-
+# Export the WSGI application with the correct variable name
+app = get_wsgi_application()
