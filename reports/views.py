@@ -2,197 +2,152 @@ import pandas as pd
 from django.shortcuts import render
 from django import forms
 
-# --- File upload form ---
+
+# --- File Upload Form ---
 class ExcelUploadForm(forms.Form):
     file = forms.FileField(label="Upload Excel File (.xlsx)")
 
-# --- Main scoring logic ---
+
+# --- Scoring Logic ---
 def calculate_score(row):
     try:
+        # Extract safely with defaults
         P = row.get("P", 0)
         A = row.get("A", 0)
         L = row.get("L", 0)
-        M = row.get("M", 0)
         S = row.get("S", 0)
+        M = row.get("M", 0)
         RGI = row.get("RGI", 0)
         RGO = row.get("RGO", 0)
         RRI = row.get("RRI", 0)
         RRO = row.get("RRO", 0)
-        V = row.get("V", 0)
-        one2one = row.get("1-2-1", 0)
+        VIS = row.get("Visitors", 0)
+        TRAIN = row.get("Training", 0)
         TYFCB = row.get("TYFCB", 0)
-        CEU = row.get("CEU", 0)
-        T = row.get("T", 1)  # Avoid division by zero
+        T = row.get("T", 0)  # Testimonials
+        ONTIME = row.get("On_Time", 0)
 
-        score = 0
+        # --- Derived Metrics ---
+        total_meetings = P + A + L + S + M
+        if total_meetings == 0:
+            total_meetings = 1  # avoid division by zero
 
-        # Derived metrics
-        referrals_per_week = (RGI + RGO + RRI + RRO) / T
-        absenteeism_rate = A / T
-        visitors_per_week = V / T
-        training_per_week = CEU / T
-        on_time_rate = 1 - (L / T)
+        absenteeism = (A + L) / total_meetings
+        referrals_per_week = (RGI + RGO + RRI + RRO) / total_meetings
+        visitors_per_week = VIS / total_meetings
+        testimonials_per_week = T / total_meetings
 
-        # --- Referrals ---
-        if referrals_per_week >= 20:
-            score += 15
-        elif referrals_per_week >= 15:
-            score += 10
-        elif referrals_per_week >= 10:
-            score += 5
+        # --- Scoring Rules ---
 
-        # --- Absenteeism ---
-        if absenteeism_rate < 0.1:
-            score += 15
-        elif absenteeism_rate < 0.25:
-            score += 10
-        elif absenteeism_rate < 0.5:
-            score += 5
+        # Absenteeism
+        if absenteeism > 2:
+            absenteeism_score = 0
+        elif absenteeism == 2:
+            absenteeism_score = 5
+        elif absenteeism == 1:
+            absenteeism_score = 10
+        else:  # < 1
+            absenteeism_score = 15
 
-        # --- Visitors ---
-        if visitors_per_week >= 3:
-            score += 20
-        elif visitors_per_week >= 2:
-            score += 10
-        elif visitors_per_week >= 1:
-            score += 5
-
-        # --- Training ---
-        if training_per_week >= 0.075:
-            score += 15
-        elif training_per_week > 0:
-            score += 10
-
-        # --- TYFCB ---
-        if TYFCB >= 1:
-            score += 15
-
-        # --- Arriving on Time ---
-        if on_time_rate >= 0.7:
-            score += 10
-        elif on_time_rate >= 0.5:
-            score += 5
-        elif on_time_rate >= 0.3:
-            score += 2
-
-        # --- Final color logic ---
-        if score >= 70:
-            color = "GREEN"
-        elif score >= 40:
-            color = "AMBER"
+        # Referrals per week
+        if referrals_per_week < 0.5:
+            referrals_score = 0
+        elif referrals_per_week < 0.75:
+            referrals_score = 5
+        elif referrals_per_week < 1:
+            referrals_score = 10
+        elif referrals_per_week < 1.2:
+            referrals_score = 15
         else:
-            color = "RED"
+            referrals_score = 20
 
-        return round(score, 2), color
+        # Visitors per week
+        if visitors_per_week < 0.1:
+            visitors_score = 0
+        elif visitors_per_week < 0.25:
+            visitors_score = 5
+        elif visitors_per_week < 0.5:
+            visitors_score = 10
+        elif visitors_per_week < 0.75:
+            visitors_score = 15
+        else:
+            visitors_score = 20
+
+        # Training
+        if TRAIN == 0:
+            training_score = 0
+        elif TRAIN == 1:
+            training_score = 5
+        elif TRAIN == 2:
+            training_score = 10
+        else:  # >=3
+            training_score = 15
+
+        # TYFCB
+        if TYFCB < 500000:
+            tyfcb_score = 0
+        elif TYFCB < 1000000:
+            tyfcb_score = 5
+        elif TYFCB < 2000000:
+            tyfcb_score = 10
+        else:
+            tyfcb_score = 15
+
+        # On-time arrival
+        if ONTIME >= 1:
+            ontime_score = 0
+        else:  # 0 = on time
+            ontime_score = 5
+
+        # Testimonials / Week
+        if testimonials_per_week <= 0:
+            testimonial_score = 0
+        elif testimonials_per_week < 0.075:
+            testimonial_score = 5
+        else:
+            testimonial_score = 10
+
+        # --- Total Score ---
+        total_score = (
+            absenteeism_score
+            + referrals_score
+            + visitors_score
+            + training_score
+            + tyfcb_score
+            + ontime_score
+            + testimonial_score
+        )
+
+        # --- Final Color Logic (Updated) ---
+        if total_score >= 70:
+            color = "GREEN"
+        elif total_score >= 50:
+            color = "AMBER"
+        elif total_score >= 30:
+            color = "RED"
+        else:
+            color = "GREY"
+
+        return round(total_score, 2), color
 
     except Exception as e:
         print("Error:", e)
-        return 0, "N/A"
+        return 0, "GREY"
 
-from django.shortcuts import render
-import pandas as pd
 
+# --- Django View ---
 def upload_excel(request):
     results = []
 
     if request.method == 'POST' and request.FILES.get('file'):
         excel_file = request.FILES['file']
-
         try:
-            df = pd.read_excel(excel_file)
-
-            # Normalize column names
+            df = pd.read_excel(excel_file, engine='openpyxl')
             df.columns = [str(c).strip().replace(" ", "_").replace("-", "_") for c in df.columns]
-
-            # Fill NaN with 0
             df = df.fillna(0)
 
             for _, row in df.iterrows():
-                # Extract columns safely
-                p = row.get('P', 0)
-                a = row.get('A', 0)
-                rgi = row.get('RGI', 0)
-                rgo = row.get('RGO', 0)
-                v = row.get('V', 0)
-                tyfcb = row.get('TYFCB', 0)
-                one_to_one = row.get('1_2_1', 0)
-                ceu = row.get('CEU', 0)
-
-                # 1️⃣ Referrals score
-                total_referrals = rgi + rgo
-                if total_referrals >= 20:
-                    referrals_score = 20
-                elif total_referrals >= 15:
-                    referrals_score = 15
-                elif total_referrals >= 10:
-                    referrals_score = 10
-                elif total_referrals >= 5:
-                    referrals_score = 5
-                else:
-                    referrals_score = 0
-
-                # 2️⃣ Absenteeism (based on attendance rate)
-                total_meetings = p + a if (p + a) > 0 else 1
-                absenteeism_ratio = a / total_meetings
-                if absenteeism_ratio < 0.1:
-                    absenteeism_score = 20
-                elif absenteeism_ratio < 0.25:
-                    absenteeism_score = 15
-                elif absenteeism_ratio < 0.5:
-                    absenteeism_score = 10
-                elif absenteeism_ratio < 0.75:
-                    absenteeism_score = 5
-                else:
-                    absenteeism_score = 0
-
-                # 3️⃣ Visitors
-                if v >= 3:
-                    visitor_score = 15
-                elif v == 2:
-                    visitor_score = 10
-                elif v == 1:
-                    visitor_score = 5
-                else:
-                    visitor_score = 0
-
-                # 4️⃣ 1-2-1
-                if one_to_one >= 0.075:
-                    one_to_one_score = 15
-                elif one_to_one > 0:
-                    one_to_one_score = 5
-                else:
-                    one_to_one_score = 0
-
-                # 5️⃣ TYFCB (Testimonials / Thank You for Closed Business)
-                if tyfcb >= 2000000:
-                    tyfcb_score = 20
-                elif tyfcb >= 1000000:
-                    tyfcb_score = 10
-                elif tyfcb >= 500000:
-                    tyfcb_score = 5
-                else:
-                    tyfcb_score = 0
-
-                # 6️⃣ Arriving on time (using CEU proxy)
-                if ceu >= 70:
-                    ontime_score = 15
-                elif ceu >= 50:
-                    ontime_score = 10
-                elif ceu >= 30:
-                    ontime_score = 5
-                else:
-                    ontime_score = 0
-
-                total_score = referrals_score + absenteeism_score + visitor_score + one_to_one_score + tyfcb_score + ontime_score
-
-                # 🚦 Color logic
-                if total_score >= 70:
-                    color = "GREEN"
-                elif total_score >= 40:
-                    color = "AMBER"
-                else:
-                    color = "RED"
-
+                total_score, color = calculate_score(row)
                 results.append({
                     "First_Name": row.get("First_Name", ""),
                     "Last_Name": row.get("Last_Name", ""),
@@ -205,8 +160,6 @@ def upload_excel(request):
 
     return render(request, 'upload_excel.html', {"results": results})
 
-
-# reports/views.py
 from django.shortcuts import render
 import pandas as pd
 import math
