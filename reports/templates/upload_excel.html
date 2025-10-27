@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>BNI Traffic Light Scoring</title>
+  <style>
+    body {
+      font-family: "Segoe UI", sans-serif;
+      background: #f9fafb;
+      padding: 40px;
+    }
+    h1 {
+      color: #333;
+      text-align: center;
+    }
+    form {
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      margin-bottom: 30px;
+      text-align: center;
+    }
+    input[type=file] {
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      margin-right: 10px;
+    }
+    button {
+      background-color: #0078d7;
+      border: none;
+      color: white;
+      padding: 10px 16px;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    button:hover { background-color: #005fa3; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    th, td {
+      padding: 10px;
+      text-align: center;
+      border-bottom: 1px solid #eee;
+    }
+    th {
+      background-color: #0078d7;
+      color: white;
+    }
+    .GREEN { background-color: #d4edda; color: #008000; font-weight: bold; }
+    .AMBER { background-color: #fff3cd; color: #856404; font-weight: bold; }
+    .RED { background-color: #f8d7da; color: #721c24; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>BNI Traffic Light Scoring System</h1>
+
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <input type="file" name="file" accept=".xls,.xlsx" required>
+    <button type="submit">Upload & Calculate</button>
+  </form>
+
+  {% if results %}
+  <table>
+    <tr>
+      <th>First Name</th>
+      <th>Last Name</th>
+      <th>Total Score</th>
+      <th>Color</th>
+    </tr>
+    {% for row in results %}
+    <tr class="{{ row.Color }}">
+      <td>{{ row.First_Name }}</td>
+      <td>{{ row.Last_Name }}</td>
+      <td>{{ row.Total_Score }}</td>
+      <td>{{ row.Color }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+</body>
+</html>
