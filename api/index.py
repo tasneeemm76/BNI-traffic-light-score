@@ -16,16 +16,31 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'bni_delhi.settings')
 import django
 django.setup()
 
-# Import Django application
+# Import Django WSGI application
 from django.core.wsgi import get_wsgi_application
-from django.http import HttpResponse
 
+# Get the WSGI application - this is what Vercel expects
 application = get_wsgi_application()
 
+# Export handler for Vercel
 def handler(request):
     """
-    Handle requests and delegate to Django WSGI application
-    This is the main entry point for Vercel serverless functions
+    Vercel serverless function handler
+    Delegates to Django WSGI application
     """
-    return application(request)
+    try:
+        return application(request)
+    except Exception as e:
+        # Log the error
+        import traceback
+        print(f"Error in Django handler: {str(e)}")
+        traceback.print_exc()
+        
+        # Return a simple error response
+        from django.http import HttpResponse
+        return HttpResponse(
+            f"Error: {str(e)}",
+            status=500,
+            content_type='text/plain'
+        )
 
