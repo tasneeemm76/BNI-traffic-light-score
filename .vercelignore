@@ -1,0 +1,47 @@
+# === Python Virtual Environments ===
+venv/
+env/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# === Build / Cache Directories ===
+build/
+dist/
+*.egg-info/
+*.egg/
+.cache/
+.mypy_cache/
+.pytest_cache/
+.tox/
+.nox/
+node_modules/
+
+# === Database / Secrets ===
+*.db
+*.sqlite3
+.env
+.env.*
+
+# === Django Specific ===
+*/migrations/
+*/tests/
+media/
+staticfiles/
+static_cdn/
+templates_cdn/
+
+# === Logs ===
+*.log
+logs/
+debug.log
+
+# === Misc ===
+tmp/
+temp/
+uploads/
+backup/
+docs/
+notebooks/
