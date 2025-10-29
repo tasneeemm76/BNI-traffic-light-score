@@ -85,6 +85,8 @@ WSGI_APPLICATION = 'bni_delhi.wsgi.application'
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
 import os
+import pymysql
+pymysql.install_as_MySQLdb()
 
 # Use MySQL only if explicitly enabled via environment; otherwise default to SQLite for local dev
 if os.environ.get('USE_MYSQL', 'False') == 'True':
@@ -96,6 +98,9 @@ if os.environ.get('USE_MYSQL', 'False') == 'True':
             'PASSWORD': os.environ.get('DB_PASSWORD', ''),
             'HOST': os.environ.get('DB_HOST', ''),
             'PORT': os.environ.get('DB_PORT', '3306'),
+            'OPTIONS': {
+            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+        },
         }
     }
 else:
