@@ -1,0 +1,29 @@
+<h2>BNI Member Monthly Scores</h2>
+
+{% if pivot_html %}
+<div class="table-container">
+    {{ pivot_html|safe }}
+</div>
+{% else %}
+<p>No reports found.</p>
+{% endif %}
+
+<style>
+.table-container {
+    overflow-x: auto;
+    margin-top: 20px;
+}
+.summary-table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 14px;
+    text-align: center;
+}
+.summary-table th, .summary-table td {
+    border: 1px solid #ccc;
+    padding: 6px 10px;
+}
+.summary-table th {
+    background-color: #f2f2f2;
+}
+</style>

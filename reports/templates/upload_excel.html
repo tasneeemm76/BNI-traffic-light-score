@@ -77,6 +77,17 @@
     <strong>Error:</strong> {{ error }}
   </div>
   {% endif %}
+  {% if save_errors %}
+<div class="alert alert-danger">
+    <h4>Save Errors:</h4>
+    <ul>
+        {% for err in save_errors %}
+        <li>{{ err }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
 
   {% if from_date and to_date %}
   <div style="background: #e8f4f8; color: #333; padding: 15px; border-radius: 5px; margin: 20px 0; text-align: center; font-size: 16px;">
@@ -100,5 +111,26 @@
     {% endfor %}
   </table>
   {% endif %}
+
+    {% if saved_count %}
+      <p><strong>Saved rows:</strong> {{ saved_count }}</p>
+    {% endif %}
+
+    {% if save_errors %}
+      <div style="color: #b00020;">
+        <p><strong>Save errors ({{ save_errors|length }}):</strong></p>
+        <ul>
+          {% for e in save_errors %}
+          <li>{{ e }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
+    <hr>
+    <p>
+        <a href="{% url 'list_reports' %}">View saved monthly reports</a> |
+        <a href="{% url 'reports_months' %}">Browse by month</a>
+    </p>
 </body>
 </html>
