@@ -339,6 +339,9 @@ def reports_summary(request):
     table_data = []
     avg_data = []
 
+    # --- For dynamic legend: keep track of color counts per month ---
+    color_counts = {m: {"GREEN": 0, "AMBER": 0, "RED": 0, "GREY": 0, "TOTAL": 0} for m in months}
+
     for member in members:
         member_row = {"member": str(member), "scores": []}
         monthly_scores = []
@@ -354,7 +357,7 @@ def reports_summary(request):
             else:
                 score = None
 
-            # color rule
+            # --- Determine color ---
             if score is None:
                 color = "GREY"
             elif score >= 70:
@@ -367,10 +370,16 @@ def reports_summary(request):
                 color = "GREY"
 
             member_row["scores"].append({"score": score, "color": color})
+
+            # --- Track for averages ---
             if score is not None:
                 monthly_scores.append(score)
 
-        # Average score
+            # --- Count colors for legend ---
+            color_counts[m]["TOTAL"] += 1
+            color_counts[m][color] += 1
+
+        # --- Average score for member ---
         avg_score = round(sum(monthly_scores) / len(monthly_scores), 2) if monthly_scores else 0
         if avg_score >= 70:
             avg_color = "GREEN"
@@ -389,9 +398,7 @@ def reports_summary(request):
 
         table_data.append(member_row)
 
-    # --- Generate HTML tables dynamically ---
-
-    # Pivot Table (Right side)
+    # --- Generate pivot (right) table ---
     pivot_html = "<table class='summary-table'><thead><tr><th>Member</th>"
     for m in months:
         pivot_html += f"<th>{m}</th>"
@@ -407,7 +414,7 @@ def reports_summary(request):
         pivot_html += "</tr>"
     pivot_html += "</tbody></table>"
 
-    # Average Table (Left side)
+    # --- Average table (left) ---
     avg_html = "<table class='summary-table'><thead><tr><th>Member</th><th>Average</th></tr></thead><tbody>"
     for a in sorted(avg_data, key=lambda x: x["avg_score"], reverse=True):
         color = a["color"].lower()
@@ -447,4 +454,3 @@ def reports_summary(request):
     }
 
     return render(request, "report_summary.html", context)
-
