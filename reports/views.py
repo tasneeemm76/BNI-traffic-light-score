@@ -414,16 +414,28 @@ def reports_summary(request):
         avg_html += f"<tr><td>{a['member']}</td><td class='color-{color}'>{a['avg_score']}</td></tr>"
     avg_html += "</tbody></table>"
 
-    # --- Dummy legend table (bottom) ---
-    legend_html = """
-    <table class='legend-table'>
-        <tr><th>Reporting Period</th><th>Apr 2025</th><th>May 2025</th><th>Jun 2025</th><th>Jul 2025</th><th>Aug 2025</th><th>Sep 2025</th></tr>
-        <tr class='legend-green'><td>Green</td><td>52%</td><td>58%</td><td>54%</td><td>60%</td><td>62%</td><td>58%</td></tr>
-        <tr class='legend-amber'><td>Amber</td><td>22%</td><td>13%</td><td>28%</td><td>16%</td><td>12%</td><td>19%</td></tr>
-        <tr class='legend-red'><td>Red</td><td>13%</td><td>13%</td><td>16%</td><td>12%</td><td>19%</td><td>11%</td></tr>
-        <tr class='legend-grey'><td>Grey</td><td>13%</td><td>17%</td><td>12%</td><td>8%</td><td>8%</td><td>12%</td></tr>
-    </table>
-    """
+    # --- Dynamically generate legend table (bottom) ---
+    legend_html = "<table class='legend-table'><tr><th>Reporting Period</th>"
+    for m in months:
+        # Convert "2025-04" → "Apr 2025"
+        year, month = m.split("-")
+        month_name = datetime.date(int(year), int(month), 1).strftime("%b %Y")
+        legend_html += f"<th>{month_name}</th>"
+    legend_html += "</tr>"
+
+    # Calculate % for each color row
+    for color_name, css_class in [("GREEN", "legend-green"), ("AMBER", "legend-amber"),
+                                  ("RED", "legend-red"), ("GREY", "legend-grey")]:
+        legend_html += f"<tr class='{css_class}'><td>{color_name.capitalize()}</td>"
+        for m in months:
+            total = color_counts[m]["TOTAL"]
+            if total == 0:
+                pct = 0
+            else:
+                pct = round((color_counts[m][color_name] / total) * 100)
+            legend_html += f"<td>{pct}%</td>"
+        legend_html += "</tr>"
+    legend_html += "</table>"
 
     context = {
         "region_name": "Delhi Central",
