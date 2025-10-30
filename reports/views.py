@@ -317,3 +317,122 @@ def delete_all_reports(request):
     except Exception as e:
         messages.error(request, f"⚠️ Error deleting records: {e}")
     return redirect("list_reports")
+
+
+
+
+from django.shortcuts import render
+from .models import MemberMonthlyReport
+
+def reports_summary(request):
+    reports = MemberMonthlyReport.objects.select_related("member", "period")
+
+    # --- Collect all unique months in ascending order ---
+    months = sorted(
+        {f"{r.period.year}-{r.period.month:02d}" for r in reports},
+        key=lambda x: (int(x.split("-")[0]), int(x.split("-")[1])),
+    )
+
+    members = {r.member for r in reports}
+
+    # --- Build table data (member × months) ---
+    table_data = []
+    avg_data = []
+
+    for member in members:
+        member_row = {"member": str(member), "scores": []}
+        monthly_scores = []
+
+        for m in months:
+            year, month = map(int, m.split("-"))
+            report = next(
+                (r for r in reports if r.member == member and r.period.year == year and r.period.month == month),
+                None,
+            )
+            if report:
+                score = report.total_score
+            else:
+                score = None
+
+            # color rule
+            if score is None:
+                color = "GREY"
+            elif score >= 70:
+                color = "GREEN"
+            elif score >= 50:
+                color = "AMBER"
+            elif score >= 30:
+                color = "RED"
+            else:
+                color = "GREY"
+
+            member_row["scores"].append({"score": score, "color": color})
+            if score is not None:
+                monthly_scores.append(score)
+
+        # Average score
+        avg_score = round(sum(monthly_scores) / len(monthly_scores), 2) if monthly_scores else 0
+        if avg_score >= 70:
+            avg_color = "GREEN"
+        elif avg_score >= 50:
+            avg_color = "AMBER"
+        elif avg_score >= 30:
+            avg_color = "RED"
+        else:
+            avg_color = "GREY"
+
+        avg_data.append({
+            "member": str(member),
+            "avg_score": avg_score,
+            "color": avg_color,
+        })
+
+        table_data.append(member_row)
+
+    # --- Generate HTML tables dynamically ---
+
+    # Pivot Table (Right side)
+    pivot_html = "<table class='summary-table'><thead><tr><th>Member</th>"
+    for m in months:
+        pivot_html += f"<th>{m}</th>"
+    pivot_html += "</tr></thead><tbody>"
+    for row in table_data:
+        pivot_html += f"<tr><td>{row['member']}</td>"
+        for s in row["scores"]:
+            if s is None or s["score"] is None:
+                pivot_html += "<td class='color-grey'></td>"
+            else:
+                color = s["color"].lower()
+                pivot_html += f"<td class='color-{color}'>{s['score']}</td>"
+        pivot_html += "</tr>"
+    pivot_html += "</tbody></table>"
+
+    # Average Table (Left side)
+    avg_html = "<table class='summary-table'><thead><tr><th>Member</th><th>Average</th></tr></thead><tbody>"
+    for a in sorted(avg_data, key=lambda x: x["avg_score"], reverse=True):
+        color = a["color"].lower()
+        avg_html += f"<tr><td>{a['member']}</td><td class='color-{color}'>{a['avg_score']}</td></tr>"
+    avg_html += "</tbody></table>"
+
+    # --- Dummy legend table (bottom) ---
+    legend_html = """
+    <table class='legend-table'>
+        <tr><th>Reporting Period</th><th>Apr 2025</th><th>May 2025</th><th>Jun 2025</th><th>Jul 2025</th><th>Aug 2025</th><th>Sep 2025</th></tr>
+        <tr class='legend-green'><td>Green</td><td>52%</td><td>58%</td><td>54%</td><td>60%</td><td>62%</td><td>58%</td></tr>
+        <tr class='legend-amber'><td>Amber</td><td>22%</td><td>13%</td><td>28%</td><td>16%</td><td>12%</td><td>19%</td></tr>
+        <tr class='legend-red'><td>Red</td><td>13%</td><td>13%</td><td>16%</td><td>12%</td><td>19%</td><td>11%</td></tr>
+        <tr class='legend-grey'><td>Grey</td><td>13%</td><td>17%</td><td>12%</td><td>8%</td><td>8%</td><td>12%</td></tr>
+    </table>
+    """
+
+    context = {
+        "region_name": "Delhi Central",
+        "chapter_name": "PATRONS",
+        "current_month": "September 2025",
+        "pivot_html": pivot_html,
+        "avg_html": avg_html,
+        "legend_html": legend_html,
+    }
+
+    return render(request, "report_summary.html", context)
+
