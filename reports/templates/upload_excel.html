@@ -66,6 +66,11 @@
 <body>
   <h1>BNI Traffic Light Scoring System</h1>
 
+  <div style="text-align: center; margin-bottom: 20px;">
+    <a href="{% url 'list_reports' %}" style="margin: 0 10px; color: #0078d7; text-decoration: none; font-weight: 500;">📊 All Reports</a>
+    <a href="{% url 'reports_months' %}" style="margin: 0 10px; color: #0078d7; text-decoration: none; font-weight: 500;">📅 Reports by Month</a>
+  </div>
+
   <form method="post" enctype="multipart/form-data">
     {% csrf_token %}
     <input type="file" name="file" accept=".xls,.xlsx,.csv" required>
@@ -102,3 +107,4 @@
   {% endif %}
 </body>
 </html>
+
