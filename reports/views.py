@@ -219,10 +219,6 @@ def upload_excel(request):
     })
 
 
-# ----------------------------------------------------------------------
-# HELPERS
-# ----------------------------------------------------------------------
-
 def extract_reporting_period(metadata_rows):
     """Extract 'From' and 'To' dates from metadata rows."""
 
