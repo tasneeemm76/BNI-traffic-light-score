@@ -6,73 +6,74 @@
   <style>
     body {
       font-family: "Arial", sans-serif;
-      margin: 30px;
-      color: #000;
+      margin: 40px;
       background: #fff;
+      color: #000;
     }
 
     h1 {
       text-align: center;
       color: #b70000;
-      font-size: 26px;
-      letter-spacing: 1px;
+      font-size: 28px;
       margin-bottom: 20px;
-      text-transform: uppercase;
+      letter-spacing: 1px;
     }
 
     .header-row {
       display: flex;
       justify-content: space-between;
-      text-align: center;
-      margin-bottom: 10px;
+      margin-bottom: 15px;
     }
 
     .header-box {
       flex: 1;
-      border: 1px solid #000;
-      margin: 0 2px;
-      background-color: #b70000;
-      color: #fff;
-      padding: 6px;
+      background: #b70000;
+      color: white;
       font-weight: bold;
+      text-align: center;
+      padding: 6px;
+      margin: 0 3px;
     }
 
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 10px;
-      margin-bottom: 30px;
       font-size: 14px;
+      margin-bottom: 25px;
     }
 
     th, td {
       border: 1px solid #000;
-      padding: 6px 8px;
       text-align: center;
+      padding: 5px 8px;
     }
 
     th {
-      background-color: #f3f3f3;
+      background: #f2f2f2;
       font-weight: bold;
     }
 
     .member-col {
       text-align: left;
+      font-weight: bold;
+      width: 180px;
     }
 
-    /* Color cells */
-    .GREEN { background-color: #a7e3a1; }
-    .AMBER { background-color: #ffe699; }
-    .RED   { background-color: #f4b084; }
-    .GREY  { background-color: #d9d9d9; }
+    /* Color classes */
+    .GREEN { background-color: #008000; color: #fff; }
+    .AMBER { background-color: #FFBF00; color: #000; }
+    .RED   { background-color: #ff0000; color: #fff; }
+    .GREY  { background-color: #808080; color: #fff; }
 
+    /* Legend and averages */
     .section-title {
       background: #b70000;
-      color: white;
+      color: #fff;
+      font-weight: bold;
       padding: 6px;
       text-align: center;
-      font-weight: bold;
-      margin-top: 20px;
+      margin-top: 25px;
+      margin-bottom: 5px;
     }
 
     .legend-table th {
@@ -81,8 +82,8 @@
     }
   </style>
 </head>
-
 <body>
+
   <h1>MEMBERS TRAFFIC LIGHTS SCORING</h1>
 
   <div class="header-row">
@@ -91,29 +92,45 @@
     <div class="header-box">{{ period_label }}</div>
   </div>
 
-  <!-- === Current Scores Table === -->
-  <div class="section-title">Current Score: Members Average Score for Six Months</div>
+  <!-- === Combined Member vs Month Table === -->
+  <div class="section-title">Members Score Per Month</div>
   <table>
     <thead>
       <tr>
         <th>Member</th>
-        <th>Total Score</th>
-        <th>Color</th>
+        {% for m in monthly_scores %}
+          <th>{{ m.month }}</th>
+        {% endfor %}
       </tr>
     </thead>
     <tbody>
       {% for row in table_rows %}
-      <tr>
-        <td class="member-col">{{ row.member }}</td>
-        <td>{{ row.total_score }}</td>
-        <td class="{{ row.color }}">{{ row.color }}</td>
-      </tr>
+        <tr>
+          <td class="member-col">{{ row.member }}</td>
+          {% for m in monthly_scores %}
+            {% with s=m.scores|dictsort:"member"|dict_key:row.member %}
+            {% endwith %}
+            {% for s in m.scores %}
+              {% if s.member == row.member %}
+                {% if s.score >= 70 %}
+                  <td class="GREEN">{{ s.score }}</td>
+                {% elif s.score >= 50 %}
+                  <td class="AMBER">{{ s.score }}</td>
+                {% elif s.score >= 30 %}
+                  <td class="RED">{{ s.score }}</td>
+                {% else %}
+                  <td class="GREY">{{ s.score }}</td>
+                {% endif %}
+              {% endif %}
+            {% endfor %}
+          {% endfor %}
+        </tr>
       {% endfor %}
     </tbody>
   </table>
 
-  <!-- === Average Per Month === -->
-  <div class="section-title">Average Per Month</div>
+  <!-- === Average of Six Months === -->
+  <div class="section-title">Average of Six Months</div>
   <table>
     <thead>
       <tr>
@@ -123,52 +140,58 @@
     </thead>
     <tbody>
       {% for a in average_scores %}
-      <tr>
-        <td>{{ a.month }}</td>
-        <td>{{ a.average_score }}</td>
-      </tr>
+        {% if a.average_score >= 70 %}
+          <tr class="GREEN">
+        {% elif a.average_score >= 50 %}
+          <tr class="AMBER">
+        {% elif a.average_score >= 30 %}
+          <tr class="RED">
+        {% else %}
+          <tr class="GREY">
+        {% endif %}
+          <td>{{ a.month }}</td>
+          <td>{{ a.average_score }}</td>
+        </tr>
       {% endfor %}
     </tbody>
   </table>
 
-  <!-- === Per Month Member Scores === -->
-  {% for m in monthly_scores %}
-  <div class="section-title">Month: {{ m.month }}</div>
-  <table>
-    <thead>
-      <tr>
-        <th>Member</th>
-        <th>Score</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for s in m.scores %}
-      <tr>
-        <td class="member-col">{{ s.member }}</td>
-        <td>{{ s.score }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% endfor %}
-
-  <!-- === Color Legend === -->
-  <div class="section-title">Summary by Color</div>
+  <!-- === Color Percentage per Month (Legend) === -->
+  <div class="section-title">Color Distribution per Month (%)</div>
   <table class="legend-table">
     <thead>
       <tr>
         <th>Color</th>
-        <th>Members</th>
-        <th>Percentage</th>
+        {% for m in monthly_scores %}
+          <th>{{ m.month }}</th>
+        {% endfor %}
       </tr>
     </thead>
     <tbody>
-      {% for l in legend_data %}
-      <tr class="{{ l.color }}">
-        <td>{{ l.color }}</td>
-        <td>{{ l.count }}</td>
-        <td>{{ l.percentage }}%</td>
-      </tr>
+      {% for color in "GREEN,AMBER,RED,GREY".split(',') %}
+        <tr>
+          <td class="{{ color }}">{{ color }}</td>
+          {% for m in monthly_scores %}
+            {% with month_total=m.scores|length %}
+              {% with count=0 %}
+                {% for s in m.scores %}
+                  {% if s.score >= 70 and color == "GREEN" %}
+                    {% widthratio 1 month_total 100 as pct %}
+                  {% elif s.score >= 50 and s.score < 70 and color == "AMBER" %}
+                    {% widthratio 1 month_total 100 as pct %}
+                  {% elif s.score >= 30 and s.score < 50 and color == "RED" %}
+                    {% widthratio 1 month_total 100 as pct %}
+                  {% elif s.score < 30 and color == "GREY" %}
+                    {% widthratio 1 month_total 100 as pct %}
+                  {% else %}
+                    {% widthratio 0 1 0 as pct %}
+                  {% endif %}
+                {% endfor %}
+              {% endwith %}
+            {% endwith %}
+            <td>-</td>
+          {% endfor %}
+        </tr>
       {% endfor %}
     </tbody>
   </table>
