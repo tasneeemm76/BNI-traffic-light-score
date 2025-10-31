@@ -2,198 +2,176 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>BNI Members Summary</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <title>Members Traffic Lights Scoring</title>
   <style>
     body {
-      font-family: "Segoe UI", Arial, sans-serif;
-      background-color: #fafafa;
-      margin: 40px;
-      color: #333;
+      font-family: "Arial", sans-serif;
+      margin: 30px;
+      color: #000;
+      background: #fff;
     }
 
-    h1, h2 {
+    h1 {
       text-align: center;
-      color: #111;
+      color: #b70000;
+      font-size: 26px;
+      letter-spacing: 1px;
+      margin-bottom: 20px;
+      text-transform: uppercase;
+    }
+
+    .header-row {
+      display: flex;
+      justify-content: space-between;
+      text-align: center;
       margin-bottom: 10px;
     }
 
-    .section {
-      margin: 40px 0;
-      padding: 20px;
-      background: white;
-      border-radius: 12px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.05);
+    .header-box {
+      flex: 1;
+      border: 1px solid #000;
+      margin: 0 2px;
+      background-color: #b70000;
+      color: #fff;
+      padding: 6px;
+      font-weight: bold;
     }
 
     table {
       width: 100%;
       border-collapse: collapse;
       margin-top: 10px;
+      margin-bottom: 30px;
+      font-size: 14px;
     }
 
     th, td {
-      border: 1px solid #ddd;
-      padding: 10px;
+      border: 1px solid #000;
+      padding: 6px 8px;
       text-align: center;
     }
 
     th {
       background-color: #f3f3f3;
+      font-weight: bold;
     }
 
-    .color-box {
-      width: 20px;
-      height: 20px;
-      border-radius: 4px;
-      display: inline-block;
+    .member-col {
+      text-align: left;
     }
 
-    .GREEN { background-color: #00c853; }
-    .AMBER { background-color: #ffca28; }
-    .RED { background-color: #e53935; }
-    .GREY { background-color: #9e9e9e; }
+    /* Color cells */
+    .GREEN { background-color: #a7e3a1; }
+    .AMBER { background-color: #ffe699; }
+    .RED   { background-color: #f4b084; }
+    .GREY  { background-color: #d9d9d9; }
 
-    .legend {
-      display: flex;
-      justify-content: center;
-      gap: 25px;
+    .section-title {
+      background: #b70000;
+      color: white;
+      padding: 6px;
+      text-align: center;
+      font-weight: bold;
       margin-top: 20px;
     }
 
-    .legend-item {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    canvas {
-      max-width: 100%;
-      height: 350px;
+    .legend-table th {
+      background: #b70000;
+      color: #fff;
     }
   </style>
 </head>
+
 <body>
+  <h1>MEMBERS TRAFFIC LIGHTS SCORING</h1>
 
-  <h1>BNI Members Summary</h1>
-  <h3>{{ chapter_name }} — {{ region_name }}</h3>
-  <p style="text-align:center;">Period: {{ period_label }}</p>
-
-  <!-- Average Scores -->
-  <div class="section">
-    <h2>Current Score: Members Average Score for All Months</h2>
-    {% if average_scores %}
-      <canvas id="averageScoreChart"></canvas>
-    {% else %}
-      <p style="text-align:center;">No average data available.</p>
-    {% endif %}
+  <div class="header-row">
+    <div class="header-box">Region: {{ region_name }}</div>
+    <div class="header-box">{{ chapter_name }}</div>
+    <div class="header-box">{{ period_label }}</div>
   </div>
 
-  <!-- Monthly Scores -->
-  <div class="section">
-    <h2>Total Score Per Month (Member vs Months)</h2>
-    {% if monthly_scores %}
-      <canvas id="monthlyScoreChart"></canvas>
-    {% else %}
-      <p style="text-align:center;">No monthly data available.</p>
-    {% endif %}
-  </div>
-
-  <!-- Table -->
-  <div class="section">
-    <h2>Member Total Scores (6-Month Summary)</h2>
-    {% if table_rows %}
-    <table>
-      <thead>
-        <tr>
-          <th>Member</th>
-          <th>Total Score</th>
-          <th>Color</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in table_rows %}
-        <tr>
-          <td>{{ row.member }}</td>
-          <td>{{ row.total_score }}</td>
-          <td><span class="color-box {{ row.color }}"></span> {{ row.color }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% else %}
-      <p style="text-align:center;">No summary data available.</p>
-    {% endif %}
-  </div>
-
-  <!-- Legend -->
-  <div class="section">
-    <h2>Legend</h2>
-    <div class="legend">
-      {% for l in legend_data %}
-        <div class="legend-item">
-          <span class="color-box {{ l.color }}"></span>
-          <span>{{ l.color }} — {{ l.count }} ({{ l.percentage }}%)</span>
-        </div>
+  <!-- === Current Scores Table === -->
+  <div class="section-title">Current Score: Members Average Score for Six Months</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Member</th>
+        <th>Total Score</th>
+        <th>Color</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in table_rows %}
+      <tr>
+        <td class="member-col">{{ row.member }}</td>
+        <td>{{ row.total_score }}</td>
+        <td class="{{ row.color }}">{{ row.color }}</td>
+      </tr>
       {% endfor %}
-    </div>
-  </div>
+    </tbody>
+  </table>
 
-  <script>
-    // Average Score Chart
-    {% if average_scores %}
-      const avgCtx = document.getElementById("averageScoreChart").getContext("2d");
-      new Chart(avgCtx, {
-        type: "line",
-        data: {
-          labels: {{ average_scores|pluck:"month"|safe }},
-          datasets: [{
-            label: "Average Score",
-            data: {{ average_scores|pluck:"average_score"|safe }},
-            borderColor: "#1976d2",
-            fill: false,
-            tension: 0.3
-          }]
-        },
-        options: {
-          scales: { y: { beginAtZero: true, max: 100 } }
-        }
-      });
-    {% endif %}
+  <!-- === Average Per Month === -->
+  <div class="section-title">Average Per Month</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Month</th>
+        <th>Average Score</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in average_scores %}
+      <tr>
+        <td>{{ a.month }}</td>
+        <td>{{ a.average_score }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
 
-    // Monthly Scores Chart (each member line)
-    {% if monthly_scores %}
-      const months = {{ monthly_scores|pluck:"month"|safe }};
-      const monthlyScores = {{ monthly_scores|safe }};
-      const members = {};
-      monthlyScores.forEach(monthData => {
-        monthData.scores.forEach(s => {
-          if (!members[s.member]) members[s.member] = [];
-        });
-      });
-      // Fill missing months with nulls
-      Object.keys(members).forEach(name => {
-        months.forEach(m => {
-          const month = monthlyScores.find(mm => mm.month === m);
-          const entry = month.scores.find(sc => sc.member === name);
-          members[name].push(entry ? entry.score : null);
-        });
-      });
-      const datasets = Object.keys(members).map(name => ({
-        label: name,
-        data: members[name],
-        fill: false,
-        borderWidth: 1,
-        tension: 0.3
-      }));
-      const ctx = document.getElementById("monthlyScoreChart").getContext("2d");
-      new Chart(ctx, {
-        type: "line",
-        data: { labels: months, datasets: datasets },
-        options: { scales: { y: { beginAtZero: true, max: 100 } }, plugins: { legend: { display: false } } }
-      });
-    {% endif %}
-  </script>
+  <!-- === Per Month Member Scores === -->
+  {% for m in monthly_scores %}
+  <div class="section-title">Month: {{ m.month }}</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Member</th>
+        <th>Score</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in m.scores %}
+      <tr>
+        <td class="member-col">{{ s.member }}</td>
+        <td>{{ s.score }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endfor %}
+
+  <!-- === Color Legend === -->
+  <div class="section-title">Summary by Color</div>
+  <table class="legend-table">
+    <thead>
+      <tr>
+        <th>Color</th>
+        <th>Members</th>
+        <th>Percentage</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in legend_data %}
+      <tr class="{{ l.color }}">
+        <td>{{ l.color }}</td>
+        <td>{{ l.count }}</td>
+        <td>{{ l.percentage }}%</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
 
 </body>
 </html>
