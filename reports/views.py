@@ -354,7 +354,7 @@ def reports_summary(request):
     six_month_periods = list(six_month_periods)[::-1]  # ensure chronological order
 
 
-    if not six_month_periods.exists():
+    if not six_month_periods:
         return render(request, "report_summary.html", {"message": "Insufficient data for 6-month report."})
 
     # --- Fetch reports ---
