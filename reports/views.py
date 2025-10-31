@@ -234,25 +234,24 @@ def delete_all_reports(request):
 
 
 from datetime import timedelta
-from django.db.models import Sum, F
+from django.db.models import Sum, Max
 from django.shortcuts import render
 from .models import Member, MemberMonthlyReport, ReportingPeriod
 
 
 def reports_summary(request):
     """
-    Generates a 6-month summary report applying the given scoring rules.
-    Each member has one aggregated total for the last 6 months.
+    Generates a 6-month summary showing each member's total score and color.
     """
 
-    # --- 1️⃣ Get latest period and compute 6-month window ---
+    # 1️⃣ Find latest reporting period
     latest_period = ReportingPeriod.objects.aggregate(latest=Max("end_date"))["latest"]
     if not latest_period:
         return render(request, "report_summary.html", {"message": "No reporting data available."})
 
     six_months_ago = latest_period - timedelta(days=180)
 
-    # --- 2️⃣ Fetch all reports in the 6-month window ---
+    # 2️⃣ Fetch reports for last 6 months
     reports = (
         MemberMonthlyReport.objects
         .filter(period__start_date__gte=six_months_ago, period__end_date__lte=latest_period)
@@ -262,7 +261,7 @@ def reports_summary(request):
     if not reports.exists():
         return render(request, "report_summary.html", {"message": "No data found for the last 6 months."})
 
-    # --- 3️⃣ Aggregate totals per member ---
+    # 3️⃣ Aggregate totals per member
     summary = (
         reports.values("member__id", "member__first_name", "member__last_name")
         .annotate(
@@ -274,10 +273,10 @@ def reports_summary(request):
         )
     )
 
-    total_weeks = 26  # Approx 6 months = 26 weeks
+    total_weeks = 26  # ~6 months
     results = []
 
-    # --- 4️⃣ Apply scoring rules per member ---
+    # 4️⃣ Scoring per member
     for row in summary:
         total_referrals = (row["total_RGI"] or 0) + (row["total_RGO"] or 0) + (row["total_RRI"] or 0) + (row["total_RRO"] or 0)
         total_visitors = row["total_V"] or 0
@@ -291,7 +290,7 @@ def reports_summary(request):
         vis_per_week = total_visitors / total_weeks
         testi_per_week = total_testimonials / total_weeks
 
-        # --- Referrals / Week ---
+        # Referrals / Week
         if ref_per_week < 0.5:
             ref_score = 0
         elif ref_per_week < 0.75:
@@ -303,7 +302,7 @@ def reports_summary(request):
         else:
             ref_score = 20
 
-        # --- Visitors / Week ---
+        # Visitors / Week
         if vis_per_week < 0.1:
             vis_score = 0
         elif vis_per_week < 0.25:
@@ -315,7 +314,7 @@ def reports_summary(request):
         else:
             vis_score = 20
 
-        # --- Absenteeism ---
+        # Absenteeism
         if total_absent > 2:
             abs_score = 0
         elif total_absent == 2:
@@ -325,7 +324,7 @@ def reports_summary(request):
         else:
             abs_score = 15
 
-        # --- Training ---
+        # Training
         if total_training == 0:
             train_score = 0
         elif total_training == 1:
@@ -335,7 +334,7 @@ def reports_summary(request):
         else:
             train_score = 15
 
-        # --- Testimonials / Week ---
+        # Testimonials / Week
         if testi_per_week <= 0:
             testi_score = 0
         elif testi_per_week < 0.075:
@@ -343,7 +342,7 @@ def reports_summary(request):
         else:
             testi_score = 10
 
-        # --- TYFCB ---
+        # TYFCB
         if total_tyfcb < 500000:
             tyfcb_score = 0
         elif total_tyfcb < 1000000:
@@ -353,14 +352,11 @@ def reports_summary(request):
         else:
             tyfcb_score = 15
 
-        # --- Arriving on time ---
+        # Arriving on time
         time_score = 0 if total_late >= 1 else 5
 
-        # --- 5️⃣ Total Score ---
-        total_score = (
-            ref_score + vis_score + abs_score +
-            train_score + testi_score + tyfcb_score + time_score
-        )
+        # Total Score
+        total_score = ref_score + vis_score + abs_score + train_score + testi_score + tyfcb_score + time_score
 
         if total_score >= 70:
             color = "GREEN"
@@ -373,18 +369,10 @@ def reports_summary(request):
 
         results.append({
             "name": f"{row['member__first_name']} {row['member__last_name']}",
-            "ref_score": ref_score,
-            "vis_score": vis_score,
-            "abs_score": abs_score,
-            "train_score": train_score,
-            "testi_score": testi_score,
-            "tyfcb_score": tyfcb_score,
-            "time_score": time_score,
             "total_score": total_score,
             "color": color,
         })
 
-    # --- 6️⃣ Render summary page ---
     context = {
         "results": results,
         "period_start": six_months_ago.strftime("%d-%b-%Y"),
@@ -393,3 +381,4 @@ def reports_summary(request):
     }
 
     return render(request, "report_summary.html", context)
+
