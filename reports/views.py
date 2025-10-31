@@ -347,13 +347,12 @@ def reports_summary(request):
         start_month += 12
         start_year -= 1
 
-    six_month_periods = (
-        ReportingPeriod.objects.filter(
-            start_date__year__gte=start_year,
-            start_date__lte=date(latest_year, latest_month, 28)
-        )
-        .order_by("start_date")[-6:]
-    )
+    six_month_periods = ReportingPeriod.objects.filter(
+        start_date__year__gte=start_year,
+        start_date__lte=date(latest_year, latest_month, 28)
+    ).order_by("-start_date")[:6]
+    six_month_periods = list(six_month_periods)[::-1]  # ensure chronological order
+
 
     if not six_month_periods.exists():
         return render(request, "report_summary.html", {"message": "Insufficient data for 6-month report."})
