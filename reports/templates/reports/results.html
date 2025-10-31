@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BNI Scores - Results</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f6f7fb; margin: 0; padding: 0; }
+        .container { max-width: 960px; margin: 40px auto; background: #fff; padding: 24px; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.06); }
+        h1 { margin-top: 0; font-size: 22px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+        th, td { padding: 12px 10px; border-bottom: 1px solid #eee; text-align: left; }
+        th { background: #fafafa; color: #444; font-weight: 600; }
+        .chip { color: #111; font-weight: 600; padding: 6px 10px; border-radius: 6px; display: inline-block; }
+        .actions { margin-top: 16px; }
+        a.btn { background: #1f6feb; color: #fff; text-decoration: none; padding: 8px 12px; border-radius: 6px; }
+        a.btn:hover { background: #1a5fd0; }
+    </style>
+    <script>
+        function scoreBg(color) { return color; }
+    </script>
+</head>
+<body>
+<div class="container">
+    <h1>Score Summary</h1>
+    <div style="margin:8px 0; color:#555; font-size:13px;">
+        {% if start_date and end_date %}
+            Debug: start = {{ start_date }}, end = {{ end_date }}, weeks = {{ weeks }}
+        {% elif weeks %}
+            Debug: total weeks computed = {{ weeks }}
+        {% endif %}
+    </div>
+    <div class="actions"><a class="btn" href="/">Upload another file</a></div>
+    <table>
+        <thead>
+        <tr>
+            <th>Member Name</th>
+            <th>Referrals/week</th>
+            <th>Visitors/week</th>
+            <th>Absenteeism</th>
+            <th>Training (CEU)</th>
+            <th>Testimonials/week</th>
+            <th>TYFCB</th>
+            <th>Arriving on time</th>
+            <th>Total</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for row in results %}
+            <tr>
+                <td>{{ row.name }}</td>
+                <td><span class="chip" style="background: {{ row.referrals_week_color }};">{{ row.referrals_week_score }}</span></td>
+                <td><span class="chip" style="background: {{ row.visitors_week_color }};">{{ row.visitors_week_score }}</span></td>
+                <td><span class="chip" style="background: {{ row.absenteeism_color }};">{{ row.absenteeism_score }}</span></td>
+                <td><span class="chip" style="background: {{ row.training_color }};">{{ row.training_score }}</span></td>
+                <td><span class="chip" style="background: {{ row.testimonials_week_color }};">{{ row.testimonials_week_score }}</span></td>
+                <td><span class="chip" style="background: {{ row.tyfcb_color }};">{{ row.tyfcb_score }}</span></td>
+                <td><span class="chip" style="background: {{ row.arrival_color }};">{{ row.arrival_score }}</span></td>
+                <td><span class="chip" style="background: {{ row.color }};">{{ row.total_score }}</span></td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="2">No results.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+</body>
+</html>
+
+
