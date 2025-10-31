@@ -320,7 +320,6 @@ def delete_all_reports(request):
         messages.error(request, f"⚠️ Error deleting records: {e}")
     return redirect("list_reports")
 
-
 from datetime import date
 from django.db.models import Sum, Max
 from django.shortcuts import render
@@ -337,7 +336,6 @@ def reports_summary(request):
     if not latest_period:
         return render(request, "report_summary.html", {"message": "No reporting data available."})
 
-    # Determine the last 6 complete months (by latest_period's month/year)
     latest_month = latest_period.month
     latest_year = latest_period.year
     start_month = latest_month - 5
@@ -346,35 +344,27 @@ def reports_summary(request):
         start_month += 12
         start_year -= 1
 
-    # Fetch up to the last 6 reporting periods, newest first, then reverse to chronological order
     six_month_qs = ReportingPeriod.objects.filter(
         start_date__year__gte=start_year,
         start_date__lte=date(latest_year, latest_month, 28)
     ).order_by("-start_date")[:6]
-
-    six_month_periods = list(six_month_qs)[::-1]  # list in chronological order (oldest -> newest)
+    six_month_periods = list(six_month_qs)[::-1]
 
     if not six_month_periods:
         return render(request, "report_summary.html", {"message": "Insufficient data for 6-month report."})
 
-    # --- Fetch reports for those periods ---
     reports = MemberMonthlyReport.objects.select_related("member", "period").filter(
         period__in=six_month_periods
     )
 
-    # approximate weeks in 6 months
     total_weeks = len(six_month_periods) * 4.33 if six_month_periods else 0.0
 
-    # --- Aggregate totals per member for the 6-month window ---
     summary = (
         reports.values("member__id", "member__first_name", "member__last_name")
         .annotate(
             total_A=Sum("A"),
-            total_L=Sum("L"),
-            total_RGI=Sum("RGI"),
-            total_RGO=Sum("RGO"),
-            total_RRI=Sum("RRI"),
-            total_RRO=Sum("RRO"),
+            total_RGI=Sum("RGI"), total_RGO=Sum("RGO"),
+            total_RRI=Sum("RRI"), total_RRO=Sum("RRO"),
             total_V=Sum("V"),
             total_TYFCB=Sum("TYFCB"),
             total_CEU=Sum("CEU"),
@@ -383,44 +373,35 @@ def reports_summary(request):
         .order_by("member__first_name")
     )
 
-    table_rows = []
-
-    for s in summary:
-        member_id = s["member__id"]
-        member_name = f"{s['member__first_name']} {s['member__last_name']}".strip()
-
-        # --- 6-month totals (coerce None -> 0) ---
+    # --- Helper scoring function for reuse (same logic as before) ---
+    def compute_score(row, total_weeks):
         total_referrals = sum([
-            s.get("total_RGI") or 0,
-            s.get("total_RGO") or 0,
-            s.get("total_RRI") or 0,
-            s.get("total_RRO") or 0,
+            row.get("total_RGI") or 0,
+            row.get("total_RGO") or 0,
+            row.get("total_RRI") or 0,
+            row.get("total_RRO") or 0,
         ])
-        total_visitors = s.get("total_V") or 0
-        total_tyfcb = s.get("total_TYFCB") or 0
-        total_training = s.get("total_CEU") or 0
-        total_testimonials = s.get("total_T") or 0
-        total_absents = s.get("total_A") or 0
-        total_late = s.get("total_L") or 0  # kept if needed later
+        total_visitors = row.get("total_V") or 0
+        total_tyfcb = row.get("total_TYFCB") or 0
+        total_training = row.get("total_CEU") or 0
+        total_testimonials = row.get("total_T") or 0
+        total_absents = row.get("total_A") or 0
 
-        # --- Averages per week (guard against division by zero) ---
         referrals_per_week = (total_referrals / total_weeks) if total_weeks else 0.0
         visitors_per_week = (total_visitors / total_weeks) if total_weeks else 0.0
         testimonials_per_week = (total_testimonials / total_weeks) if total_weeks else 0.0
 
-        # --- Scoring rules (exact thresholds you provided) ---
-
-        # Referrals/week -> score + color mapping
+        # Referrals/week
         if referrals_per_week < 0.5:
-            ref_score, ref_color = 0, "GREY"
+            ref_score = 0
         elif referrals_per_week < 0.75:
-            ref_score, ref_color = 5, "GREY"
+            ref_score = 5
         elif referrals_per_week < 1:
-            ref_score, ref_color = 10, "RED"
+            ref_score = 10
         elif referrals_per_week < 1.2:
-            ref_score, ref_color = 15, "YELLOW"
+            ref_score = 15
         else:
-            ref_score, ref_color = 20, "GREEN"
+            ref_score = 20
 
         # Visitors/week
         if visitors_per_week < 0.1:
@@ -434,24 +415,24 @@ def reports_summary(request):
         else:
             vis_score = 20
 
-        # Absenteeism (total absents in 6 months)
+        # Absenteeism
         if total_absents > 2:
-            abs_score, abs_color = 0, "GREY"
+            abs_score = 0
         elif total_absents == 2:
-            abs_score, abs_color = 5, "RED"
+            abs_score = 5
         elif total_absents == 1:
-            abs_score, abs_color = 10, "RED"
-        else:  # 0
-            abs_score, abs_color = 15, "GREEN"
+            abs_score = 10
+        else:
+            abs_score = 15
 
-        # Training (sum over 6 months)
+        # Training
         if total_training == 0:
             train_score = 0
         elif total_training == 1:
             train_score = 5
         elif total_training == 2:
             train_score = 10
-        else:  # >=3
+        else:
             train_score = 15
 
         # Testimonials/week
@@ -462,41 +443,23 @@ def reports_summary(request):
         else:
             testi_score = 10
 
-        # TYFCB (sum over 6 months)
-        if total_tyfcb < 500_000:
+        # TYFCB
+        if total_tyfcb < 500000:
             tyfcb_score = 0
-        elif total_tyfcb < 1_000_000:
+        elif total_tyfcb < 1000000:
             tyfcb_score = 5
-        elif total_tyfcb < 2_000_000:
+        elif total_tyfcb < 2000000:
             tyfcb_score = 10
         else:
             tyfcb_score = 15
 
-        # Arriving on time:
-        # Rule: >=1 absent => arriving_on_time score = 0 ; 0 absent => 5
-        # Also, if any single month has >2 absents -> arriving_on_time = 0
         arriving_score = 0 if total_absents >= 1 else 5
 
-        # Check per-month absences for the "more than 2 absent in one month" override
-        monthly_absents = (
-            MemberMonthlyReport.objects.filter(member_id=member_id, period__in=six_month_periods)
-            .values_list("A", flat=True)
-        )
-        if any((a or 0) > 2 for a in monthly_absents):
-            arriving_score = 0
-
-        # --- Total score (sum of component scores) ---
         total_score = (
-            ref_score
-            + vis_score
-            + abs_score
-            + train_score
-            + testi_score
-            + tyfcb_score
-            + arriving_score
+            ref_score + vis_score + abs_score +
+            train_score + testi_score + tyfcb_score + arriving_score
         )
 
-        # --- Overall color classification by total_score ---
         if total_score >= 70:
             color = "GREEN"
         elif total_score >= 50:
@@ -506,48 +469,81 @@ def reports_summary(request):
         else:
             color = "GREY"
 
+        return total_score, color
+
+    # --- Overall member totals ---
+    table_rows = []
+    for s in summary:
+        total_score, color = compute_score(s, total_weeks)
         table_rows.append({
-            "member_id": member_id,
-            "member": member_name,
-            "referrals_per_week": round(referrals_per_week, 3),
-            "ref_score": ref_score,
-            "ref_color": ref_color,
-            "visitors_per_week": round(visitors_per_week, 3),
-            "vis_score": vis_score,
-            "abs_score": abs_score,
-            "abs_color": abs_color,
-            "train_score": train_score,
-            "testimonials_per_week": round(testimonials_per_week, 3),
-            "testi_score": testi_score,
-            "tyfcb_score": tyfcb_score,
-            "arriving_score": arriving_score,
+            "member": f"{s['member__first_name']} {s['member__last_name']}",
             "total_score": total_score,
             "color": color,
         })
 
-    # --- Summary / legend (guard total_members == 0) ---
+    # --- Per-month average and member scores (for graphs) ---
+    monthly_scores = []
+    average_scores = []
+
+    for period in six_month_periods:
+        month_reports = reports.filter(period=period)
+        if not month_reports.exists():
+            continue
+
+        month_rows = []
+        for mr in month_reports.values(
+            "member__first_name", "member__last_name",
+            "A", "RGI", "RGO", "RRI", "RRO", "V", "TYFCB", "CEU", "T"
+        ):
+            score, _ = compute_score({
+                "total_A": mr["A"],
+                "total_RGI": mr["RGI"], "total_RGO": mr["RGO"],
+                "total_RRI": mr["RRI"], "total_RRO": mr["RRO"],
+                "total_V": mr["V"], "total_TYFCB": mr["TYFCB"],
+                "total_CEU": mr["CEU"], "total_T": mr["T"]
+            }, 4.33)  # one month ~4.33 weeks
+            month_rows.append({
+                "member": f"{mr['member__first_name']} {mr['member__last_name']}",
+                "score": score,
+            })
+
+        monthly_scores.append({
+            "month": period.start_date.strftime("%b %Y"),
+            "scores": month_rows,
+        })
+        # average for that month
+        avg = round(sum(mr["score"] for mr in month_rows) / len(month_rows), 1) if month_rows else 0
+        average_scores.append({
+            "month": period.start_date.strftime("%b %Y"),
+            "average_score": avg,
+        })
+
+    # --- Legend ---
     total_members = len(table_rows)
     color_count = {"GREEN": 0, "AMBER": 0, "RED": 0, "GREY": 0}
     for r in table_rows:
         color_count[r["color"]] += 1
+    legend_data = [
+        {
+            "color": c,
+            "count": color_count[c],
+            "percentage": round((color_count[c] / total_members) * 100, 1) if total_members else 0
+        }
+        for c in color_count
+    ]
 
-    legend_data = []
-    for c in ("GREEN", "AMBER", "RED", "GREY"):
-        count = color_count[c]
-        pct = round((count / total_members * 100), 1) if total_members else 0.0
-        legend_data.append({"color": c, "count": count, "percentage": pct})
-
-    # --- Period label using the list (no .first/.last on list) ---
+    # --- Context ---
     period_label = f"{six_month_periods[0].start_date.strftime('%b %Y')} – {six_month_periods[-1].end_date.strftime('%b %Y')}"
 
     context = {
         "period_label": period_label,
         "chapter_name": "PATRONS",
         "region_name": "Delhi Central",
-        "table_rows": sorted(table_rows, key=lambda x: x["total_score"], reverse=True),  # highest first
+        "table_rows": sorted(table_rows, key=lambda x: x["total_score"], reverse=True),
         "legend_data": legend_data,
+        "average_scores": average_scores,
+        "monthly_scores": monthly_scores,
     }
 
     return render(request, "report_summary.html", context)
-
 
