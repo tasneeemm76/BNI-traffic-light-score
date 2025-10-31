@@ -12,98 +12,16 @@ from django.views.decorators.http import require_POST
 from .forms import ExcelUploadForm
 from .models import Member, ReportingPeriod, MemberMonthlyReport, UploadBatch
 
+import re
+import pandas as pd
+from datetime import datetime
+from django.shortcuts import render
+from .forms import ExcelUploadForm
+from .models import Member, ReportingPeriod, MemberMonthlyReport, UploadBatch
 
-
-# ----------------------------------------------------------------------
-# SCORE CALCULATION LOGIC
-# ----------------------------------------------------------------------
-
-def calculate_scores(P, A, L, M, S, RGI, RGO, RRI, RRO, V, CEU, TYFCB, T, testimonials, weeks):
-    """Calculates total score and color based on business rules."""
-    total_meetings = P + A + L + S + M
-    total_referrals = RGI + RGO + RRI + RRO
-    referrals_per_week = total_referrals / weeks if weeks > 0 else 0
-    visitors_per_week = V / weeks if weeks > 0 else 0
-    testimonials_per_week = testimonials / weeks if weeks > 0 else 0
-
-    # Referrals / Week
-    if referrals_per_week < 0.5:
-        ref_score = 0
-    elif referrals_per_week < 0.75:
-        ref_score = 5
-    elif referrals_per_week < 1:
-        ref_score = 10
-    elif referrals_per_week < 1.2:
-        ref_score = 15
-    else:
-        ref_score = 20
-
-    # Avg. Visitors / Week
-    if visitors_per_week < 0.1:
-        vis_score = 0
-    elif visitors_per_week < 0.25:
-        vis_score = 5
-    elif visitors_per_week < 0.5:
-        vis_score = 10
-    elif visitors_per_week < 0.75:
-        vis_score = 15
-    else:
-        vis_score = 20
-
-    # Absenteeism
-    abs_score = 15 if A == 0 else 10 if A == 1 else 5 if A == 2 else 0
-
-    # Training
-    train_score = 0 if CEU == 0 else 5 if CEU == 1 else 10 if CEU == 2 else 15
-
-    # Testimonials / Week
-    testi_score = 0 if testimonials_per_week <= 0 else 5 if testimonials_per_week < 0.075 else 10
-
-    # TYFCB
-    if TYFCB < 500000:
-        tyfcb_score = 0
-    elif TYFCB < 1000000:
-        tyfcb_score = 5
-    elif TYFCB < 2000000:
-        tyfcb_score = 10
-    else:
-        tyfcb_score = 15
-
-    # Arriving on time
-    time_score = 0 if L >= 1 else 5
-
-    total_score = ref_score + vis_score + abs_score + train_score + testi_score + tyfcb_score + time_score
-
-    if total_score >= 70:
-        color = "GREEN"
-    elif total_score >= 50:
-        color = "AMBER"
-    elif total_score >= 30:
-        color = "RED"
-    else:
-        color = "GREY"
-
-    return {
-        "total_score": total_score,
-        "color": color,
-        "details": {
-            "ref_score": ref_score,
-            "vis_score": vis_score,
-            "abs_score": abs_score,
-            "train_score": train_score,
-            "testi_score": testi_score,
-            "tyfcb_score": tyfcb_score,
-            "time_score": time_score,
-        },
-    }
-
-
-# ----------------------------------------------------------------------
-# FILE UPLOAD AND PARSING LOGIC
-# ----------------------------------------------------------------------
 
 def upload_excel(request):
-    """Handle upload and processing of Excel or CSV files."""
+    """Handle upload and saving of Excel or CSV files (no score calculation)."""
     results, save_errors = [], []
     from_date = to_date = None
     saved_count = 0
@@ -135,7 +53,6 @@ def upload_excel(request):
             metadata_rows = df_raw.iloc[:header_row_idx]
             start_date_obj, end_date_obj = extract_reporting_period(metadata_rows)
             from_date, to_date = start_date_obj, end_date_obj
-            weeks = max(((end_date_obj - start_date_obj).days / 7), 1)
 
             # --- Create Period and Batch ---
             period = get_or_create_reporting_period_and_clean_duplicates(start_date_obj, end_date_obj)
@@ -145,31 +62,24 @@ def upload_excel(request):
                 end_date=end_date_obj,
             )
 
-            # --- Clean Data ---
+            # --- Prepare Data ---
             df_raw.columns = df_raw.iloc[header_row_idx]
             df = df_raw.iloc[header_row_idx + 1:].copy().reset_index(drop=True)
             df.columns = [str(c).strip().replace(" ", "_").replace("-", "_") for c in df.columns]
             df = df.fillna(0)
 
+            # --- Convert numeric fields ---
             numeric_cols = [
-                "P", "A", "L", "M", "S", "RGI", "RGO", "RRI", "RRO", "V",
-                "TYFCB", "CEU", "T", "Testimonials"
+                "P", "A", "L", "M", "S", "RGI", "RGO", "RRI", "RRO",
+                "V", "TYFCB", "CEU", "T", "Testimonials"
             ]
             for col in numeric_cols:
                 if col in df.columns:
                     df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
-            # --- Process Each Row ---
+            # --- Save Each Row ---
             for _, row in df.iterrows():
                 try:
-                    P, A, L, M, S = [int(row.get(x, 0)) for x in ["P", "A", "L", "M", "S"]]
-                    RGI, RGO, RRI, RRO = [int(row.get(x, 0)) for x in ["RGI", "RGO", "RRI", "RRO"]]
-                    V, CEU, T, TYFCB, testimonials = [
-                        int(row.get(x, 0)) for x in ["V", "CEU", "T", "TYFCB", "Testimonials"]
-                    ]
-
-                    scores = calculate_scores(P, A, L, M, S, RGI, RGO, RRI, RRO, V, CEU, TYFCB, T, testimonials, weeks)
-
                     member, _ = Member.objects.get_or_create(
                         first_name=str(row.get("First_Name", "")).strip()[:150],
                         last_name=str(row.get("Last_Name", "")).strip()[:150],
@@ -179,19 +89,25 @@ def upload_excel(request):
                         member=member,
                         period=period,
                         batch=batch,
-                        P=P, A=A, L=L, M=M, S=S,
-                        RGI=RGI, RGO=RGO, RRI=RRI, RRO=RRO,
-                        V=V, TYFCB=TYFCB, CEU=CEU, T=T,
-                        total_score=scores["total_score"],
-                        color=scores["color"],
+                        P=row.get("P", 0),
+                        A=row.get("A", 0),
+                        L=row.get("L", 0),
+                        M=row.get("M", 0),
+                        S=row.get("S", 0),
+                        RGI=row.get("RGI", 0),
+                        RGO=row.get("RGO", 0),
+                        RRI=row.get("RRI", 0),
+                        RRO=row.get("RRO", 0),
+                        V=row.get("V", 0),
+                        TYFCB=row.get("TYFCB", 0),
+                        CEU=row.get("CEU", 0),
+                        T=row.get("T", 0),
                     )
 
                     saved_count += 1
                     results.append({
                         "First_Name": member.first_name,
                         "Last_Name": member.last_name,
-                        "Total_Score": scores["total_score"],
-                        "Color": scores["color"],
                     })
 
                 except Exception as save_err:
@@ -206,8 +122,6 @@ def upload_excel(request):
                 "form": ExcelUploadForm(),
                 "results": [],
                 "error": error_message,
-                "from_date": None,
-                "to_date": None,
                 "save_errors": save_errors,
             })
 
@@ -223,7 +137,6 @@ def upload_excel(request):
 
 def extract_reporting_period(metadata_rows):
     """Extract 'From' and 'To' dates from metadata rows."""
-
     def parse_flexible_date(date_str):
         if not date_str:
             return None
@@ -246,11 +159,10 @@ def extract_reporting_period(metadata_rows):
         if "to" in row_str.lower():
             to_date_raw = row_str.split(":")[1].strip()
 
-    start = parse_flexible_date(from_date_raw)
-    end = parse_flexible_date(to_date_raw)
     today = datetime.today().date()
-
-    return start or today, end or today
+    start = parse_flexible_date(from_date_raw) or today
+    end = parse_flexible_date(to_date_raw) or today
+    return start, end
 
 
 def get_or_create_reporting_period_and_clean_duplicates(start_date_obj, end_date_obj):
