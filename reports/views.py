@@ -242,103 +242,107 @@ def upload_file(request: HttpRequest) -> HttpResponse:
 
 
 def view_scoring(request: HttpRequest) -> HttpResponse:
-    """
-    View scoring data from date range stored in database, 
-    with detailed training debug logs and proper Member.id linking.
-    """
-    from django.utils.dateparse import parse_date
-    from collections import defaultdict
+	"""
+	View scoring data from date range stored in database,
+	combining CEU (Continuing Education Units) + TrainingData counts
+	into the final training score.
+	"""
+	from django.utils.dateparse import parse_date
+	from collections import defaultdict
 
-    start_date_str = request.GET.get('start_date')
-    end_date_str = request.GET.get('end_date')
+	start_date_str = request.GET.get("start_date")
+	end_date_str = request.GET.get("end_date")
 
-    if start_date_str and end_date_str:
-        start_date = parse_date(start_date_str)
-        end_date = parse_date(end_date_str)
+	if start_date_str and end_date_str:
+		start_date = parse_date(start_date_str)
+		end_date = parse_date(end_date_str)
 
-        if not start_date or not end_date:
-            context = {
-                'error': 'Invalid date format. Please use YYYY-MM-DD format.',
-                'reports': ReportUpload.objects.all()[:20],
-            }
-            return render(request, 'reports/view_scoring.html', context)
+		if not start_date or not end_date:
+			return render(request, "reports/view_scoring.html", {
+				"error": "Invalid date format. Please use YYYY-MM-DD format.",
+				"reports": ReportUpload.objects.all()[:20],
+			})
 
-        # --- Filter reports overlapping the selected range ---
-        reports = ReportUpload.objects.filter(
-            start_date__lte=end_date,
-            end_date__gte=start_date
-        ).distinct()
+		# --- Filter reports overlapping selected range ---
+		reports = ReportUpload.objects.filter(
+			start_date__lte=end_date,
+			end_date__gte=start_date
+		).distinct()
 
-        if not reports.exists():
-            context = {
-                'error': f'No reports found for the date range {start_date_str} to {end_date_str}',
-                'start_date': start_date_str,
-                'end_date': end_date_str,
-                'reports': ReportUpload.objects.all()[:20],
-            }
-            return render(request, 'reports/view_scoring.html', context)
+		if not reports.exists():
+			return render(request, "reports/view_scoring.html", {
+				"error": f"No reports found for the date range {start_date_str} to {end_date_str}",
+				"start_date": start_date_str,
+				"end_date": end_date_str,
+				"reports": ReportUpload.objects.all()[:20],
+			})
 
-        print(f"\n===== DEBUG TRAINING IMPORT SUMMARY =====")
-        print(f"Selected Reports: {list(reports.values_list('id', flat=True))}")
-        print(f"Date Range: {start_date_str} → {end_date_str}")
+		print("\n===== TRAINING DATA DEBUG =====")
+		print(f"Reports in range: {list(reports.values_list('id', flat=True))}")
 
-        # --- Get all member data for these reports ---
-        all_member_data = MemberData.objects.filter(report__in=reports).select_related('member', 'report')
-        print(f"Total MemberData records: {all_member_data.count()}")
+		# --- Load MemberData (core metrics) ---
+		all_member_data = MemberData.objects.filter(report__in=reports).select_related("member", "report")
+		print(f"Total MemberData records found: {all_member_data.count()}")
 
-        # --- Build dict of total training counts by member.id ---
-        training_data_dict = defaultdict(int)
-        training_records = TrainingData.objects.filter(report__in=reports).select_related('member', 'report')
-        print(f"TrainingData records found: {training_records.count()}")
+		# --- Load and aggregate TrainingData ---
+		training_data_dict = defaultdict(int)
+		training_records = TrainingData.objects.filter(report__in=reports).select_related("member", "report")
 
-        for training in training_records:
-            training_data_dict[training.member.id] += training.count
-            print(f"[TRAINING RECORD] Report {training.report.id} | "
-                  f"Member: {training.member.full_name} | Count={training.count}")
+		print(f"TrainingData records found: {training_records.count()}")
+		for training in training_records:
+			training_data_dict[training.member.id] += training.count
+			print(f"[TRAINING] Report {training.report.id} | Member {training.member.full_name} | Count={training.count}")
 
-        if not training_records.exists():
-            print("⚠️ WARNING: No TrainingData records found for this range! Training scores will be 0.\n")
+		if not training_records.exists():
+			print("⚠️ No training data found — training scores will be 0.")
 
-        results = []
+		results = []
+		missing_training = 0
 
-        print("\n===== DEBUG SCORING CALCULATION START =====")
-        missing_training = 0
-        for member_data in all_member_data:
-            member = member_data.member
-            member_name = (member.full_name or f"{member.first_name} {member.last_name}").strip() or "Unknown"
+		print("\n===== SCORING DEBUG START =====")
+		for member_data in all_member_data:
+			member = member_data.member
+			member_name = member.full_name or f"{member.first_name} {member.last_name}".strip() or "Unknown"
 
-            training_count = training_data_dict.get(member.id, 0)
-            if training_count == 0:
-                missing_training += 1
+			total_weeks = member_data.report.total_weeks or 1
 
-            total_weeks = member_data.report.total_weeks or 1
+			# --- Combine CEU + TrainingData for total training score input ---
+			training_count = training_data_dict.get(member.id, 0)
+			total_training_value = member_data.CEU + training_count  # 👈 CEU from MemberData + count from TrainingData
 
-            print(f"[DEBUG] Member: {member_name} | Report ID={member_data.report.id} | "
-                  f"Weeks={total_weeks} | RGI={member_data.RGI} RGO={member_data.RGO} "
-                  f"V={member_data.V} TYFCB={member_data.TYFCB} Training={training_count}")
+			if training_count == 0:
+				missing_training += 1
 
-            score_result = calculate_score_from_data(member_data, total_weeks, training_count)
-            score_result['name'] = member_name
-            score_result['report_period'] = f"{member_data.report.start_date} → {member_data.report.end_date}"
-            results.append(score_result)
+			print(f"[DEBUG] {member_name} | Report {member_data.report.id} | Weeks={total_weeks} | "
+			      f"RGI={member_data.RGI} | RGO={member_data.RGO} | V={member_data.V} | "
+			      f"TYFCB={member_data.TYFCB} | CEU={member_data.CEU} | "
+			      f"TrainingData={training_count} | TotalTraining={total_training_value}")
 
-            print(f"   ➜ Total Score: {score_result.get('total_score', 'N/A')}")
+			# --- Pass combined training value to scoring function ---
+			score_result = calculate_score_from_data(
+				member_data=member_data,
+				total_weeks=total_weeks,
+				training_value=total_training_value,  # ✅ rename in function if needed
+			)
 
-        print("===== DEBUG SCORING CALCULATION END =====")
-        print(f"Members missing training entries: {missing_training}/{all_member_data.count()}")
-        print("==========================================\n")
+			score_result["name"] = member_name
+			score_result["report_period"] = f"{member_data.report.start_date} → {member_data.report.end_date}"
+			results.append(score_result)
 
-        # Sort results by total score (desc) then name
-        results.sort(key=lambda x: (-x.get('total_score', 0), x['name']))
+			print(f"    ➜ Total Score: {score_result.get('total_score', 'N/A')}")
 
-        context = {
-            'results': results,
-            'start_date': start_date_str,
-            'end_date': end_date_str,
-            'reports': ReportUpload.objects.all()[:20],
-        }
-        return render(request, 'reports/view_scoring.html', context)
+		print("===== SCORING DEBUG END =====")
+		print(f"Members missing training entries: {missing_training}/{all_member_data.count()}")
+		print("=================================\n")
 
-    # --- Default view (no date range selected) ---
-    context = {'reports': ReportUpload.objects.all()[:20]}
-    return render(request, 'reports/view_scoring.html', context)
+		results.sort(key=lambda x: (-x.get("total_score", 0), x["name"]))
+
+		return render(request, "reports/view_scoring.html", {
+			"results": results,
+			"start_date": start_date_str,
+			"end_date": end_date_str,
+			"reports": ReportUpload.objects.all()[:20],
+		})
+
+	# --- Default view ---
+	return render(request, "reports/view_scoring.html", {"reports": ReportUpload.objects.all()[:20]})
