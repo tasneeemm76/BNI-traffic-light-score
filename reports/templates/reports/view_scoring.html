@@ -135,7 +135,17 @@
             Showing scores from {{ start_date }} to {{ end_date }}
         </div>
     {% endif %}
-
+<h2>📅 Available Months</h2>
+<ul>
+  {% for m in month_list %}
+    <li>
+      <a href="?start_date={{ m.start }}&end_date={{ m.end }}">
+        {{ m.label }}
+      </a>
+    </li>
+  {% endfor %}
+</ul>
+<hr>
     {% if results %}
         <div class="actions">
             <a href="{% url 'upload_file' %}" class="btn">Upload New File</a>

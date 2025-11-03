@@ -295,90 +295,116 @@ def upload_file(request: HttpRequest) -> HttpResponse:
         import traceback
         print("\n⚠️ ERROR in upload_file:\n", traceback.format_exc())
         return render(request, 'reports/upload.html', {'error': str(e)})
+	
+
+from django.utils.dateparse import parse_date
+from django.db.models import Min, Max
+from collections import defaultdict
+import calendar
+from datetime import date
 
 def view_scoring(request: HttpRequest) -> HttpResponse:
-	"""
-	View scoring data from date range stored in database,
-	combining CEU (Continuing Education Units) + TrainingData counts
-	into the final training score.
-	"""
-	from django.utils.dateparse import parse_date
-	from collections import defaultdict
+    """
+    View scoring data for a selected date range or month.
+    Shows available months in ascending order and allows month-based filtering.
+    """
 
-	start_date_str = request.GET.get("start_date")
-	end_date_str = request.GET.get("end_date")
+    # --- Fetch all reports for month list ---
+    all_reports = ReportUpload.objects.all().order_by("start_date")
 
-	if start_date_str and end_date_str:
-		start_date = parse_date(start_date_str)
-		end_date = parse_date(end_date_str)
+    # --- Build month list (unique (year, month)) ---
+    month_list = []
+    for r in all_reports:
+        if r.start_date:
+            month_key = (r.start_date.year, r.start_date.month)
+            if month_key not in month_list:
+                month_list.append(month_key)
 
-		if not start_date or not end_date:
-			return render(request, "reports/view_scoring.html", {
-				"error": "Invalid date format. Please use YYYY-MM-DD format.",
-				"reports": ReportUpload.objects.all()[:20],
-			})
+    # Convert to readable month names
+    month_display = [
+        {
+            "year": y,
+            "month": m,
+            "label": f"{calendar.month_name[m]} {y}",
+            "start": date(y, m, 1).isoformat(),
+            "end": date(y, m, calendar.monthrange(y, m)[1]).isoformat(),
+        }
+        for (y, m) in sorted(month_list)
+    ]
 
-		# --- Filter reports overlapping selected range ---
-		reports = ReportUpload.objects.filter(
-			start_date__lte=end_date,
-			end_date__gte=start_date
-		).distinct()
+    # --- Get filters from request ---
+    start_date_str = request.GET.get("start_date")
+    end_date_str = request.GET.get("end_date")
 
-		if not reports.exists():
-			return render(request, "reports/view_scoring.html", {
-				"error": f"No reports found for the date range {start_date_str} to {end_date_str}",
-				"start_date": start_date_str,
-				"end_date": end_date_str,
-				"reports": ReportUpload.objects.all()[:20],
-			})
+    if start_date_str and end_date_str:
+        start_date = parse_date(start_date_str)
+        end_date = parse_date(end_date_str)
 
-		# --- Load MemberData (core metrics) ---
-		all_member_data = MemberData.objects.filter(
-			report__in=reports
-		).select_related("member", "report")
+        if not start_date or not end_date:
+            return render(request, "reports/view_scoring.html", {
+                "error": "Invalid date format. Please use YYYY-MM-DD.",
+                "month_list": month_display,
+                "reports": all_reports,
+            })
 
-		# --- Load and aggregate TrainingData ---
-		training_data_dict = defaultdict(int)
-		training_records = TrainingData.objects.filter(
-			report__in=reports
-		).select_related("member", "report")
+        # --- Filter reports overlapping range ---
+        reports = ReportUpload.objects.filter(
+            start_date__lte=end_date,
+            end_date__gte=start_date
+        ).distinct()
 
-		for training in training_records:
-			training_data_dict[training.member.id] += training.count
+        if not reports.exists():
+            return render(request, "reports/view_scoring.html", {
+                "error": f"No reports found for {start_date_str} to {end_date_str}",
+                "month_list": month_display,
+                "start_date": start_date_str,
+                "end_date": end_date_str,
+                "reports": all_reports,
+            })
 
-		results = []
+        # --- Load core MemberData ---
+        all_member_data = MemberData.objects.filter(
+            report__in=reports
+        ).select_related("member", "report")
 
-		for member_data in all_member_data:
-			member = member_data.member
-			member_name = member.full_name or f"{member.first_name} {member.last_name}".strip() or "Unknown"
+        # --- Load TrainingData ---
+        training_data_dict = defaultdict(int)
+        training_records = TrainingData.objects.filter(report__in=reports).select_related("member", "report")
+        for t in training_records:
+            training_data_dict[t.member.id] += t.count
 
-			total_weeks = member_data.report.total_weeks or 1
+        # --- Combine results ---
+        results = []
+        for member_data in all_member_data:
+            member = member_data.member
+            member_name = member.full_name or f"{member.first_name} {member.last_name}".strip() or "Unknown"
+            total_weeks = member_data.report.total_weeks or 1
 
-			# --- Combine CEU + TrainingData for total training score input ---
-			training_count = training_data_dict.get(member.id, 0)
-			total_training_value = member_data.CEU + training_count
+            training_count = training_data_dict.get(member.id, 0)
+            total_training_value = member_data.CEU + training_count
 
-			# ✅ FIXED: pass correct argument name
-			score_result = calculate_score_from_data(
-				member_data=member_data,
-				total_weeks=total_weeks,
-				training_count=total_training_value,
-			)
+            score_result = calculate_score_from_data(
+                member_data=member_data,
+                total_weeks=total_weeks,
+                training_count=total_training_value,
+            )
 
-			score_result["name"] = member_name
-			score_result["report_period"] = f"{member_data.report.start_date} → {member_data.report.end_date}"
-			results.append(score_result)
+            score_result["name"] = member_name
+            score_result["report_period"] = f"{member_data.report.start_date} → {member_data.report.end_date}"
+            results.append(score_result)
 
-		results.sort(key=lambda x: (-x.get("total_score", 0), x["name"]))
+        results.sort(key=lambda x: (-x.get("total_score", 0), x["name"]))
 
-		return render(request, "reports/view_scoring.html", {
-			"results": results,
-			"start_date": start_date_str,
-			"end_date": end_date_str,
-			"reports": ReportUpload.objects.all()[:20],
-		})
+        return render(request, "reports/view_scoring.html", {
+            "results": results,
+            "start_date": start_date_str,
+            "end_date": end_date_str,
+            "month_list": month_display,
+            "reports": all_reports,
+        })
 
-	# --- Default view ---
-	return render(request, "reports/view_scoring.html", {
-		"reports": ReportUpload.objects.all()[:20]
-	})
+    # --- Default view (no date selected) ---
+    return render(request, "reports/view_scoring.html", {
+        "month_list": month_display,
+        "reports": all_reports,
+    })
