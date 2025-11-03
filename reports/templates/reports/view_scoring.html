@@ -137,15 +137,24 @@
     {% endif %}
 
 
+ {% for report in reports %}
+    <tr>
+        <td>{{ report.start_date }}</td>
+        <td>{{ report.end_date }}</td>
+    </tr>
+    <td>
     <form method="post" style="display:inline;">
-    {% csrf_token %}
-    <input type="hidden" name="delete_month" value="1">
-    <input type="hidden" name="year" value="{{ item.year }}">
-    <input type="hidden" name="month" value="{{ item.month }}">
-    <button type="submit" onclick="return confirm('Delete all data for {{ item.label }}?')" class="btn btn-danger">
-        🗑 Delete
-    </button>
-</form>
+        {% csrf_token %}
+        <input type="hidden" name="delete_range" value="1">
+        <input type="hidden" name="start_date" value="{{ report.start_date }}">
+        <input type="hidden" name="end_date" value="{{ report.end_date }}">
+        <button type="submit" class="btn btn-danger" onclick="return confirm('Delete report from {{ report.start_date }} → {{ report.end_date }}?')">
+            🗑 Delete
+        </button>
+    </form>
+</td>
+
+{% endfor %}
 
 
 

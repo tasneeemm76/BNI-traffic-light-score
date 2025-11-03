@@ -310,36 +310,30 @@ def view_scoring(request: HttpRequest) -> HttpResponse:
     View scoring data with monthly listing and delete option.
     """
 
-    # --- Handle delete request first ---
-    if request.method == "POST" and "delete_month" in request.POST:
-        year = int(request.POST.get("year"))
-        month = int(request.POST.get("month"))
-        first_day = date(year, month, 1)
-        last_day = date(year, month, calendar.monthrange(year, month)[1])
+      # --- Handle delete request by specific start & end date ---
+    if request.method == "POST" and "delete_range" in request.POST:
+        start_str = request.POST.get("start_date")
+        end_str = request.POST.get("end_date")
 
         try:
+            start = parse_date(start_str)
+            end = parse_date(end_str)
+            if not start or not end:
+                raise ValueError("Invalid date format.")
+
             with transaction.atomic():
-                # Identify reports within that month
-                reports_to_delete = ReportUpload.objects.filter(
-    Q(start_date__month=month, start_date__year=year) |
-    Q(end_date__month=month, end_date__year=year)
-)
-
-
+                reports_to_delete = ReportUpload.objects.filter(start_date=start, end_date=end)
                 if reports_to_delete.exists():
-                    # Delete related data
                     MemberData.objects.filter(report__in=reports_to_delete).delete()
                     TrainingData.objects.filter(report__in=reports_to_delete).delete()
                     reports_to_delete.delete()
-
-                    message = f"✅ All data for {calendar.month_name[month]} {year} deleted successfully."
+                    message = f"✅ Report from {start} → {end} deleted successfully."
                 else:
-                    message = f"⚠️ No reports found for {calendar.month_name[month]} {year}."
+                    message = f"⚠️ No report found for {start} → {end}."
 
         except Exception as e:
-            message = f"❌ Error deleting {calendar.month_name[month]} {year}: {str(e)}"
+            message = f"❌ Error deleting report: {str(e)}"
 
-        # After delete, reload the page
         all_reports = ReportUpload.objects.all().order_by("start_date")
         month_list = _get_month_list(all_reports)
         return render(request, "reports/view_scoring.html", {
