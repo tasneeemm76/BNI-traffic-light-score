@@ -15,6 +15,8 @@
         button { background: #1f6feb; color: #fff; border: none; padding: 10px 16px; border-radius: 6px; cursor: pointer; }
         button:hover { background: #1a5fd0; }
         .hint { color: #666; font-size: 12px; margin-top: 8px; }
+        a.btn { background: #1f6feb; color: #fff; text-decoration: none; padding: 8px 12px; border-radius: 6px; display: inline-block; }
+        a.btn:hover { background: #1a5fd0; }
     </style>
 </head>
 <body>
@@ -36,6 +38,9 @@
                 <button type="submit">Process</button>
             </div>
         </form>
+        <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e9e9ef;">
+            <a class="btn" href="{% url 'view_scoring' %}" style="display: inline-block;">View Scoring by Date Range</a>
+        </div>
     </div>
 </div>
 </body>
