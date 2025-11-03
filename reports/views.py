@@ -321,9 +321,10 @@ def view_scoring(request: HttpRequest) -> HttpResponse:
             with transaction.atomic():
                 # Identify reports within that month
                 reports_to_delete = ReportUpload.objects.filter(
-                    start_date__gte=first_day,
-                    end_date__lte=last_day
-                )
+    Q(start_date__month=month, start_date__year=year) |
+    Q(end_date__month=month, end_date__year=year)
+)
+
 
                 if reports_to_delete.exists():
                     # Delete related data
@@ -438,3 +439,24 @@ def _get_month_list(all_reports):
         }
         for (y, m) in sorted(month_list)
     ]
+
+
+from django.shortcuts import redirect, get_object_or_404
+from django.contrib import messages
+from .models import ReportUpload
+
+def delete_report(request, start, end):
+    """Deletes all records belonging to a report with matching start and end dates."""
+    try:
+        report = ReportUpload.objects.filter(start_date=start, end_date=end).first()
+        if not report:
+            messages.warning(request, f"No reports found for {start} → {end}.")
+            return redirect('view_scoring')
+
+        # Delete all linked data (MemberData + TrainingData handled by cascade)
+        report.delete()
+        messages.success(request, f"✅ Report from {start} to {end} deleted successfully.")
+    except Exception as e:
+        messages.error(request, f"⚠️ Error deleting report: {e}")
+    
+    return redirect('view_scoring')

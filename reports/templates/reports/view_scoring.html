@@ -136,35 +136,17 @@
         </div>
     {% endif %}
 
-<h2>📅 Available Months</h2>
-{% if message %}
-    <p style="color: green;">{{ message }}</p>
-{% endif %}
 
-<table border="1" cellpadding="6">
-  <tr>
-    <th>Month</th>
-    <th>View</th>
-    <th>Delete</th>
-  </tr>
-  {% for m in month_list %}
-  <tr>
-    <td>{{ m.label }}</td>
-    <td><a href="?start_date={{ m.start }}&end_date={{ m.end }}">View</a></td>
-    <td>
-      <form method="POST" style="display:inline;">
-        {% csrf_token %}
-        <input type="hidden" name="year" value="{{ m.year }}">
-        <input type="hidden" name="month" value="{{ m.month }}">
-        <button type="submit" name="delete_month" onclick="return confirm('Delete all data for {{ m.label }}?');">
-          🗑 Delete
-        </button>
-      </form>
-    </td>
-  </tr>
-  {% endfor %}
-</table>
-<hr>
+    <form method="post" style="display:inline;">
+    {% csrf_token %}
+    <input type="hidden" name="delete_month" value="1">
+    <input type="hidden" name="year" value="{{ item.year }}">
+    <input type="hidden" name="month" value="{{ item.month }}">
+    <button type="submit" onclick="return confirm('Delete all data for {{ item.label }}?')" class="btn btn-danger">
+        🗑 Delete
+    </button>
+</form>
+
 
 
     {% if results %}
