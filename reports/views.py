@@ -15,13 +15,13 @@ def _color_by_absolute(score: int, max_score: int) -> str:
 		return '#d3d3d3'
 	percent = (score / max_score) * 100.0
 	if percent >= 70:
-		return '#6cc070'
+		return '#008000'
 	elif percent >= 50:
-		return '#f5c542'
+		return '#FFBF00'
 	elif percent >= 30:
-		return '#e84c3d'
+		return '#ff0000'
 	else:
-		return '#d3d3d3'
+		return '#808080'
 
 
 def calculate_score_from_data(member_data: MemberData, total_weeks: float, training_count: Optional[int] = None) -> Dict[str, Any]:
@@ -253,6 +253,7 @@ def upload_file(request: HttpRequest) -> HttpResponse:
 
 	return render(request, 'reports/upload.html')
 
+
 def view_scoring(request: HttpRequest) -> HttpResponse:
 	"""
 	View scoring data from date range stored in database,
@@ -289,29 +290,22 @@ def view_scoring(request: HttpRequest) -> HttpResponse:
 				"reports": ReportUpload.objects.all()[:20],
 			})
 
-		print("\n===== TRAINING DATA DEBUG =====")
-		print(f"Reports in range: {list(reports.values_list('id', flat=True))}")
-
 		# --- Load MemberData (core metrics) ---
-		all_member_data = MemberData.objects.filter(report__in=reports).select_related("member", "report")
-		print(f"Total MemberData records found: {all_member_data.count()}")
+		all_member_data = MemberData.objects.filter(
+			report__in=reports
+		).select_related("member", "report")
 
 		# --- Load and aggregate TrainingData ---
 		training_data_dict = defaultdict(int)
-		training_records = TrainingData.objects.filter(report__in=reports).select_related("member", "report")
+		training_records = TrainingData.objects.filter(
+			report__in=reports
+		).select_related("member", "report")
 
-		print(f"TrainingData records found: {training_records.count()}")
 		for training in training_records:
 			training_data_dict[training.member.id] += training.count
-			print(f"[TRAINING] Report {training.report.id} | Member {training.member.full_name} | Count={training.count}")
-
-		if not training_records.exists():
-			print("⚠️ No training data found — training scores will be 0.")
 
 		results = []
-		missing_training = 0
 
-		print("\n===== SCORING DEBUG START =====")
 		for member_data in all_member_data:
 			member = member_data.member
 			member_name = member.full_name or f"{member.first_name} {member.last_name}".strip() or "Unknown"
@@ -320,32 +314,18 @@ def view_scoring(request: HttpRequest) -> HttpResponse:
 
 			# --- Combine CEU + TrainingData for total training score input ---
 			training_count = training_data_dict.get(member.id, 0)
-			total_training_value = member_data.CEU + training_count  # 👈 CEU from MemberData + count from TrainingData
-
-			if training_count == 0:
-				missing_training += 1
-
-			print(f"[DEBUG] {member_name} | Report {member_data.report.id} | Weeks={total_weeks} | "
-			      f"RGI={member_data.RGI} | RGO={member_data.RGO} | V={member_data.V} | "
-			      f"TYFCB={member_data.TYFCB} | CEU={member_data.CEU} | "
-			      f"TrainingData={training_count} | TotalTraining={total_training_value}")
+			total_training_value = member_data.CEU + training_count
 
 			# --- Pass combined training value to scoring function ---
 			score_result = calculate_score_from_data(
 				member_data=member_data,
 				total_weeks=total_weeks,
-				training_value=total_training_value,  # ✅ rename in function if needed
+				training_value=total_training_value,
 			)
 
 			score_result["name"] = member_name
 			score_result["report_period"] = f"{member_data.report.start_date} → {member_data.report.end_date}"
 			results.append(score_result)
-
-			print(f"    ➜ Total Score: {score_result.get('total_score', 'N/A')}")
-
-		print("===== SCORING DEBUG END =====")
-		print(f"Members missing training entries: {missing_training}/{all_member_data.count()}")
-		print("=================================\n")
 
 		results.sort(key=lambda x: (-x.get("total_score", 0), x["name"]))
 
@@ -357,4 +337,6 @@ def view_scoring(request: HttpRequest) -> HttpResponse:
 		})
 
 	# --- Default view ---
-	return render(request, "reports/view_scoring.html", {"reports": ReportUpload.objects.all()[:20]})
+	return render(request, "reports/view_scoring.html", {
+		"reports": ReportUpload.objects.all()[:20]
+	})
