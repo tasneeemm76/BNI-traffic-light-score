@@ -154,132 +154,147 @@ def calculate_score_from_data(member_data: MemberData, total_weeks: float, train
 		'arrival_color': _color_by_absolute(int(arriving_on_time_score), arriving_on_time_max),
 	}
 
+
 import io
 import pandas as pd
-from .utils import parse_training_period_and_header
+from datetime import date
+from django.db import transaction
+from django.shortcuts import render
+from django.http import HttpRequest, HttpResponse
+from .models import Member, MemberData, TrainingData, ReportUpload
+from .utils import load_and_clean, score_dataframe, parse_training_period_and_header, parse_training_counts
 
 
 def upload_file(request: HttpRequest) -> HttpResponse:
-	if request.method == 'POST' and request.FILES.get('file'):
-		f = request.FILES['file']
-		filename = f.name
-		file_bytes = f.read()
+    """
+    Uploads main report + optional training report, processes, scores, and saves all data safely.
+    Handles metadata, missing headers, and malformed training reports gracefully.
+    """
+    if request.method != 'POST' or not request.FILES.get('file'):
+        return render(request, 'reports/upload.html')
 
-		try:
-			# --- Step 1: Parse main report file ---
-			df, weeks, months, from_date, to_date = load_and_clean(file_bytes, filename)
+    try:
+        # === STEP 1: Read main report ===
+        f = request.FILES['file']
+        file_bytes = f.read()
+        filename = f.name
 
-			training_counts = None
-			tr_from_date = None
-			tr_to_date = None
+        df, weeks, months, from_date, to_date = load_and_clean(file_bytes, filename)
 
-			# --- Step 2: Handle training file if provided ---
-			if request.FILES.get('training_file'):
-				tr_f = request.FILES['training_file']
-				tr_bytes = tr_f.read()
+        # === STEP 2: If training file provided, parse safely ===
+        training_counts = {}
+        tr_from_date = None
+        tr_to_date = None
 
-				# Read raw to detect header and dates
-				tr_df_raw = pd.read_excel(io.BytesIO(tr_bytes), header=None)
-				tr_from_date, tr_to_date, header_row_index = parse_training_period_and_header(tr_df_raw)
+        if request.FILES.get('training_file'):
+            tr_f = request.FILES['training_file']
+            tr_bytes = tr_f.read()
 
-				if header_row_index == -1:
-					raise ValueError("Training report must contain 'First Name' and 'Last Name' columns.")
+            # Try Excel first, fallback to CSV
+            try:
+                tr_df_raw = pd.read_excel(io.BytesIO(tr_bytes), header=None)
+            except Exception:
+                tr_df_raw = pd.read_csv(io.BytesIO(tr_bytes), header=None)
 
-				# Re-read clean data skipping metadata
-				tr_df = pd.read_excel(io.BytesIO(tr_bytes), skiprows=header_row_index)
+            # Detect From/To dates + header
+            tr_from_date, tr_to_date, header_row_index = parse_training_period_and_header(tr_df_raw)
+            if header_row_index == -1:
+                raise ValueError("Training report must contain 'First Name' and 'Last Name' columns.")
 
-				# Parse name-based training counts
-				training_counts = parse_training_counts(tr_df, tr_f.name)
+            # Re-read skipping metadata rows before header
+            try:
+                tr_df = pd.read_excel(io.BytesIO(tr_bytes), skiprows=header_row_index)
+            except Exception:
+                tr_df = pd.read_csv(io.BytesIO(tr_bytes), skiprows=header_row_index)
 
+            # Parse name-based counts (handles DataFrame or bytes)
+            training_counts = parse_training_counts(tr_df, tr_f.name)
 
-			# --- Step 3: Score main data ---
-			results = score_dataframe(df, weeks, months, training_counts)
+        # === STEP 3: Score main data ===
+        results = score_dataframe(df, weeks, months, training_counts)
 
-			# --- Step 4: Save to database ---
-			with transaction.atomic():
-				report_upload = ReportUpload.objects.create(
-					start_date=from_date.date() if from_date else date.today(),
-					end_date=to_date.date() if to_date else date.today(),
-					total_weeks=weeks,
-					total_months=months
-				)
+        # === STEP 4: Save all data ===
+        with transaction.atomic():
+            report_upload = ReportUpload.objects.create(
+                start_date=from_date.date() if from_date else date.today(),
+                end_date=to_date.date() if to_date else date.today(),
+                total_weeks=weeks,
+                total_months=months
+            )
 
-				print("\n===== DEBUG: Saving MemberData & TrainingData =====")
-				print(f"Training file entries: {len(training_counts or {})}\n")
+            print("\n===== DEBUG: Saving MemberData & TrainingData =====")
+            print(f"Training file entries: {len(training_counts or {})}\n")
 
-				for _, row in df.iterrows():
-					first_name = str(row.get('First Name', '')).strip()
-					last_name = str(row.get('Last Name', '')).strip()
-					if not first_name and not last_name:
-						continue
+            for _, row in df.iterrows():
+                first_name = str(row.get('First Name', '')).strip()
+                last_name = str(row.get('Last Name', '')).strip()
+                if not first_name and not last_name:
+                    continue
 
-					member, _ = Member.objects.get_or_create(
-						first_name=first_name,
-						last_name=last_name,
-						defaults={'full_name': f"{first_name} {last_name}".strip()}
-					)
+                # Create or get member
+                member, _ = Member.objects.get_or_create(
+                    first_name=first_name,
+                    last_name=last_name,
+                    defaults={'full_name': f"{first_name} {last_name}".strip()}
+                )
 
-					# --- Save MemberData ---
-					MemberData.objects.update_or_create(
-						report=report_upload,
-						member=member,
-						defaults={
-							'P': int(row.get('P', 0) or 0),
-							'A': int(row.get('A', 0) or 0),
-							'L': int(row.get('L', 0) or 0),
-							'M': int(row.get('M', 0) or 0),
-							'S': int(row.get('S', 0) or 0),
-							'RGI': int(row.get('RGI', 0) or 0),
-							'RGO': int(row.get('RGO', 0) or 0),
-							'RRI': int(row.get('RRI', 0) or 0),
-							'RRO': int(row.get('RRO', 0) or 0),
-							'V': int(row.get('V', 0) or 0),
-							'one_to_one': int(row.get('1-2-1', 0) or 0),
-							'TYFCB': int(row.get('TYFCB', 0) or 0),
-							'CEU': int(row.get('CEU', 0) or 0),
-							'T': int(row.get('T', 0) or 0),
-						}
-					)
+                # Save MemberData
+                MemberData.objects.update_or_create(
+                    report=report_upload,
+                    member=member,
+                    defaults={
+                        'P': int(row.get('P', 0) or 0),
+                        'A': int(row.get('A', 0) or 0),
+                        'L': int(row.get('L', 0) or 0),
+                        'M': int(row.get('M', 0) or 0),
+                        'S': int(row.get('S', 0) or 0),
+                        'RGI': int(row.get('RGI', 0) or 0),
+                        'RGO': int(row.get('RGO', 0) or 0),
+                        'RRI': int(row.get('RRI', 0) or 0),
+                        'RRO': int(row.get('RRO', 0) or 0),
+                        'V': int(row.get('V', 0) or 0),
+                        'one_to_one': int(row.get('1-2-1', 0) or 0),
+                        'TYFCB': int(row.get('TYFCB', 0) or 0),
+                        'CEU': int(row.get('CEU', 0) or 0),
+                        'T': int(row.get('T', 0) or 0),
+                    }
+                )
 
-					# --- Save TrainingData ---
-					if training_counts:
-						name_key = f"{first_name} {last_name}".strip()
-						training_count = 0
+                # Save TrainingData
+                if training_counts:
+                    name_key = f"{first_name} {last_name}".strip().lower()
+                    training_count = 0
 
-						if name_key in training_counts:
-							training_count = training_counts[name_key]
-						else:
-							for key in training_counts.keys():
-								if key.lower().strip() == name_key.lower().strip():
-									training_count = training_counts[key]
-									break
+                    for key, val in training_counts.items():
+                        if key.strip().lower() == name_key:
+                            training_count = val
+                            break
 
-						TrainingData.objects.update_or_create(
-							report=report_upload,
-							member=member,
-							start_date=tr_from_date.date() if tr_from_date else None,
-							end_date=tr_to_date.date() if tr_to_date else None,
-							defaults={'count': int(training_count or 0)}
-						)
+                    TrainingData.objects.update_or_create(
+                        report=report_upload,
+                        member=member,
+                        start_date=tr_from_date.date() if hasattr(tr_from_date, 'date') else tr_from_date,
+                        end_date=tr_to_date.date() if hasattr(tr_to_date, 'date') else tr_to_date,
+                        defaults={'count': int(training_count or 0)},
+                    )
 
-						print(f"Saved TrainingData → {member.full_name}: {training_count} "
-						      f"({tr_from_date} → {tr_to_date})")
+                    print(f"Saved TrainingData → {member.full_name}: {training_count} ({tr_from_date} → {tr_to_date})")
 
-				print("===== DEBUG: Data Save Complete =====\n")
+            print("===== DEBUG: Data Save Complete =====\n")
 
-			context = {
-				'results': results,
-				'weeks': weeks,
-				'start_date': from_date,
-				'end_date': to_date,
-			}
-			return render(request, 'reports/results.html', context)
+        # === STEP 5: Render results ===
+        context = {
+            'results': results,
+            'weeks': weeks,
+            'start_date': from_date,
+            'end_date': to_date,
+        }
+        return render(request, 'reports/results.html', context)
 
-		except Exception as e:
-			return render(request, 'reports/upload.html', {'error': str(e)})
-
-	return render(request, 'reports/upload.html')
-
+    except Exception as e:
+        import traceback
+        print("\n⚠️ ERROR in upload_file:\n", traceback.format_exc())
+        return render(request, 'reports/upload.html', {'error': str(e)})
 
 def view_scoring(request: HttpRequest) -> HttpResponse:
 	"""

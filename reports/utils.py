@@ -191,39 +191,59 @@ def load_and_clean(file_bytes: bytes, filename: str) -> Tuple[pd.DataFrame, floa
 	return df.reset_index(drop=True), weeks, months, from_date, to_date
 
 
-def parse_training_counts(file_bytes: bytes, filename: str) -> Dict[str, int]:
-	"""Parse the training report and count occurrences by member full name.
 
-	Expected columns include 'First Name' and 'Last Name'.
-	"""
-	buffer = io.BytesIO(file_bytes)
-	if filename.lower().endswith('.xlsx'):
-		try:
-			df = pd.read_excel(buffer, dtype=object, engine='openpyxl')
-		except Exception:
-			buffer.seek(0)
-			df = pd.read_excel(buffer, dtype=object)
-	elif filename.lower().endswith('.csv'):
-		df = pd.read_csv(buffer, dtype=object)
-	else:
-		raise ValueError('Unsupported training file type')
+import io
+import pandas as pd
+from typing import Dict
+def parse_training_counts(file_or_df, filename: str) -> Dict[str, int]:
+    """
+    Parse the training report (Excel or CSV) and count occurrences by member full name.
+    Handles both raw bytes or a pre-read DataFrame.
+    """
+    import io
+    import pandas as pd
 
-	# Normalize columns
-	cols_lc = {str(c).strip().lower(): c for c in df.columns}
-	first_col = cols_lc.get('first name') or cols_lc.get('firstname') or cols_lc.get('first')
-	last_col = cols_lc.get('last name') or cols_lc.get('lastname') or cols_lc.get('last')
-	if not first_col or not last_col:
-		raise ValueError('Training report must have First Name and Last Name columns')
+    # --- Step 1: Load DataFrame ---
+    if isinstance(file_or_df, pd.DataFrame):
+        df = file_or_df.copy()
+    else:
+        # Expect bytes
+        if not file_or_df:
+            return {}
+        buffer = io.BytesIO(file_or_df)
+        if filename.lower().endswith(".xlsx"):
+            try:
+                df = pd.read_excel(buffer, dtype=object, engine="openpyxl")
+            except Exception:
+                buffer.seek(0)
+                df = pd.read_excel(buffer, dtype=object)
+        elif filename.lower().endswith(".csv"):
+            df = pd.read_csv(buffer, dtype=object)
+        else:
+            raise ValueError("Unsupported training file type")
 
-	counts: Dict[str, int] = {}
-	for _, r in df.iterrows():
-		fn = str(r.get(first_col, '') or '').strip()
-		ln = str(r.get(last_col, '') or '').strip()
-		name_key = f"{fn} {ln}".strip().lower()
-		if not name_key:
-			continue
-		counts[name_key] = counts.get(name_key, 0) + 1
-	return counts
+    if df.empty:
+        return {}
+
+    # --- Step 2: Normalize headers ---
+    cols_lc = {str(c).strip().lower(): c for c in df.columns}
+    first_col = cols_lc.get("first name") or cols_lc.get("firstname") or cols_lc.get("first")
+    last_col = cols_lc.get("last name") or cols_lc.get("lastname") or cols_lc.get("last")
+
+    if not first_col or not last_col:
+        raise ValueError("Training report must have 'First Name' and 'Last Name' columns.")
+
+    # --- Step 3: Count training occurrences per member ---
+    counts: Dict[str, int] = {}
+    for _, r in df.iterrows():
+        fn = str(r.get(first_col, "") or "").strip()
+        ln = str(r.get(last_col, "") or "").strip()
+        if not fn and not ln:
+            continue
+        name_key = f"{fn} {ln}".strip().lower()
+        counts[name_key] = counts.get(name_key, 0) + 1
+
+    return counts
 
 
 def _color_by_absolute(score: int, max_score: int) -> str:
