@@ -277,10 +277,13 @@ def view_scoring(request: HttpRequest) -> HttpResponse:
 		# --- Fetch member and training data ---
 		all_member_data = MemberData.objects.filter(report__in=reports).select_related('member', 'report')
 
+		# --- Fetch training data and verify ---
 		training_data_dict = {}
 		for training in TrainingData.objects.filter(report__in=reports).select_related('member', 'report'):
 			key = (training.report.id, training.member.id)
 			training_data_dict[key] = training.count
+			print(f"[TRAINING] Report {training.report.id} | Member {training.member.full_name} | Count={training.count}")
+
 
 		results = []
 
