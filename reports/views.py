@@ -310,7 +310,7 @@ def view_scoring(request: HttpRequest) -> HttpResponse:
     View scoring data with monthly listing and delete option.
     """
 
-      # --- Handle delete request by specific start & end date ---
+    # --- Handle delete request by specific start & end date ---
     if request.method == "POST" and "delete_range" in request.POST:
         start_str = request.POST.get("start_date")
         end_str = request.POST.get("end_date")
@@ -322,11 +322,12 @@ def view_scoring(request: HttpRequest) -> HttpResponse:
                 raise ValueError("Invalid date format.")
 
             with transaction.atomic():
-                reports_to_delete = ReportUpload.objects.filter(start_date=start, end_date=end)
-                if reports_to_delete.exists():
-                    MemberData.objects.filter(report__in=reports_to_delete).delete()
-                    TrainingData.objects.filter(report__in=reports_to_delete).delete()
-                    reports_to_delete.delete()
+                deleted_count, _ = ReportUpload.objects.filter(
+                    start_date=start,
+                    end_date=end
+                ).delete()
+
+                if deleted_count > 0:
                     message = f"✅ Report from {start} → {end} deleted successfully."
                 else:
                     message = f"⚠️ No report found for {start} → {end}."
@@ -343,7 +344,6 @@ def view_scoring(request: HttpRequest) -> HttpResponse:
         })
 
     # --- Regular GET logic below ---
-
     all_reports = ReportUpload.objects.all().order_by("start_date")
     month_list = _get_month_list(all_reports)
 

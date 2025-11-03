@@ -146,8 +146,9 @@
     <form method="post" style="display:inline;">
         {% csrf_token %}
         <input type="hidden" name="delete_range" value="1">
-        <input type="hidden" name="start_date" value="{{ report.start_date }}">
-        <input type="hidden" name="end_date" value="{{ report.end_date }}">
+<input type="hidden" name="start_date" value="{{ report.start_date|date:'Y-m-d' }}">
+<input type="hidden" name="end_date" value="{{ report.end_date|date:'Y-m-d' }}">
+
         <button type="submit" class="btn btn-danger" onclick="return confirm('Delete report from {{ report.start_date }} → {{ report.end_date }}?')">
             🗑 Delete
         </button>
