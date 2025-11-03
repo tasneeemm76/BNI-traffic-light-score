@@ -151,45 +151,48 @@ def calculate_score_from_data(member_data: MemberData, total_weeks: float, train
 		'arrival_color': _color_by_absolute(int(arriving_on_time_score), arriving_on_time_max),
 	}
 
-
 def upload_file(request: HttpRequest) -> HttpResponse:
 	if request.method == 'POST' and request.FILES.get('file'):
 		f = request.FILES['file']
 		filename = f.name
 		file_bytes = f.read()
+
 		try:
 			df, weeks, months, from_date, to_date = load_and_clean(file_bytes, filename)
 			training_counts = None
+
 			if request.FILES.get('training_file'):
 				tr_f = request.FILES['training_file']
 				training_counts = parse_training_counts(tr_f.read(), tr_f.name)
+
 			results = score_dataframe(df, weeks, months, training_counts)
-			
-			# Save to database
+
+			# --- Save to database ---
 			with transaction.atomic():
-				# Create or get report upload
+				# Create a new report record
 				report_upload = ReportUpload.objects.create(
 					start_date=from_date.date() if from_date else date.today(),
 					end_date=to_date.date() if to_date else date.today(),
 					total_weeks=weeks,
 					total_months=months
 				)
-				
-				# Save member data (only raw data columns, no scores)
+
+				print("\n===== DEBUG: Saving MemberData & TrainingData =====")
+				print(f"Training file entries: {len(training_counts or {})}\n")
+
+				# --- Step 1: Save all member data ---
 				for _, row in df.iterrows():
 					first_name = str(row.get('First Name', '')).strip()
 					last_name = str(row.get('Last Name', '')).strip()
 					if not first_name and not last_name:
 						continue
-					
-					# Get or create member
+
 					member, _ = Member.objects.get_or_create(
 						first_name=first_name,
 						last_name=last_name,
 						defaults={'full_name': f"{first_name} {last_name}".strip()}
 					)
-					
-					# Save member data (only raw data, no scores)
+
 					MemberData.objects.update_or_create(
 						report=report_upload,
 						member=member,
@@ -210,22 +213,31 @@ def upload_file(request: HttpRequest) -> HttpResponse:
 							'T': int(row.get('T', 0) or 0),
 						}
 					)
-				
-				# Save training data if provided
-				if training_counts:
-					for name_key, count in training_counts.items():
-						# Try to find member by full name
-						try:
-							member = Member.objects.get(full_name__iexact=name_key)
-							TrainingData.objects.update_or_create(
-								report=report_upload,
-								member=member,
-								defaults={'count': count}
-							)
-						except Member.DoesNotExist:
-							# If member not found, skip
-							continue
-			
+
+					# --- Step 2: Always create a TrainingData record ---
+					training_count = 0
+					if training_counts:
+						# Try exact full name match
+						name_key = f"{first_name} {last_name}".strip()
+						if name_key in training_counts:
+							training_count = training_counts[name_key]
+						else:
+							# Try case-insensitive match
+							for key in training_counts.keys():
+								if key.lower().strip() == name_key.lower().strip():
+									training_count = training_counts[key]
+									break
+
+					TrainingData.objects.update_or_create(
+						report=report_upload,
+						member=member,
+						defaults={'count': int(training_count or 0)}
+					)
+
+					print(f"Saved TrainingData → {member.full_name}: {training_count}")
+
+				print("===== DEBUG: Data Save Complete =====\n")
+
 			context = {
 				'results': results,
 				'weeks': weeks,
@@ -233,13 +245,13 @@ def upload_file(request: HttpRequest) -> HttpResponse:
 				'end_date': to_date,
 			}
 			return render(request, 'reports/results.html', context)
+
 		except Exception as e:
 			return render(request, 'reports/upload.html', {
 				'error': str(e)
 			})
 
 	return render(request, 'reports/upload.html')
-
 
 def view_scoring(request: HttpRequest) -> HttpResponse:
 	"""
