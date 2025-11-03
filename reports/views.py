@@ -316,11 +316,11 @@ def view_scoring(request: HttpRequest) -> HttpResponse:
 			training_count = training_data_dict.get(member.id, 0)
 			total_training_value = member_data.CEU + training_count
 
-			# --- Pass combined training value to scoring function ---
+			# ✅ FIXED: pass correct argument name
 			score_result = calculate_score_from_data(
 				member_data=member_data,
 				total_weeks=total_weeks,
-				training_value=total_training_value,
+				training_count=total_training_value,
 			)
 
 			score_result["name"] = member_name
