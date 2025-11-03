@@ -178,12 +178,19 @@ def upload_file(request: HttpRequest) -> HttpResponse:
 				tr_f = request.FILES['training_file']
 				tr_bytes = tr_f.read()
 
-				# Read as DataFrame to extract dates
-				tr_df = pd.read_excel(io.BytesIO(tr_bytes))
-				tr_from_date, tr_to_date, _ = parse_training_period_and_header(tr_df)
+				# Read raw to detect header and dates
+				tr_df_raw = pd.read_excel(io.BytesIO(tr_bytes), header=None)
+				tr_from_date, tr_to_date, header_row_index = parse_training_period_and_header(tr_df_raw)
+
+				if header_row_index == -1:
+					raise ValueError("Training report must contain 'First Name' and 'Last Name' columns.")
+
+				# Re-read clean data skipping metadata
+				tr_df = pd.read_excel(io.BytesIO(tr_bytes), skiprows=header_row_index)
 
 				# Parse name-based training counts
-				training_counts = parse_training_counts(tr_bytes, tr_f.name)
+				training_counts = parse_training_counts(tr_df, tr_f.name)
+
 
 			# --- Step 3: Score main data ---
 			results = score_dataframe(df, weeks, months, training_counts)
