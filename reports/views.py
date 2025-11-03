@@ -240,14 +240,15 @@ def upload_file(request: HttpRequest) -> HttpResponse:
 
 	return render(request, 'reports/upload.html')
 
+
 def view_scoring(request: HttpRequest) -> HttpResponse:
-	"""View scoring data from date range stored in database, with debugging and safe name handling."""
+	"""View scoring data from date range stored in database, including Training Score from TrainingData."""
 	from django.utils.dateparse import parse_date
 
 	start_date_str = request.GET.get('start_date')
 	end_date_str = request.GET.get('end_date')
 
-	# If dates provided, filter by them
+	# --- Step 1: Validate and parse date range ---
 	if start_date_str and end_date_str:
 		start_date = parse_date(start_date_str)
 		end_date = parse_date(end_date_str)
@@ -259,7 +260,7 @@ def view_scoring(request: HttpRequest) -> HttpResponse:
 			}
 			return render(request, 'reports/view_scoring.html', context)
 
-		# --- Filter reports overlapping with selected range ---
+		# --- Step 2: Filter reports overlapping date range ---
 		reports = ReportUpload.objects.filter(
 			start_date__lte=end_date,
 			end_date__gte=start_date
@@ -274,46 +275,50 @@ def view_scoring(request: HttpRequest) -> HttpResponse:
 			}
 			return render(request, 'reports/view_scoring.html', context)
 
-		# --- Fetch member and training data ---
+		# --- Step 3: Fetch all member data for those reports ---
 		all_member_data = MemberData.objects.filter(report__in=reports).select_related('member', 'report')
 
-		# --- Fetch training data and verify ---
+		# --- Step 4: Build training count dictionary (sum by member across reports) ---
 		training_data_dict = {}
 		for training in TrainingData.objects.filter(report__in=reports).select_related('member', 'report'):
-			key = (training.report.id, training.member.id)
-			training_data_dict[key] = training.count
-			print(f"[TRAINING] Report {training.report.id} | Member {training.member.full_name} | Count={training.count}")
-
+			member_key = training.member.full_name.strip().lower()
+			training_data_dict[member_key] = training_data_dict.get(member_key, 0) + training.count
+			print(f"[TRAINING] {training.member.full_name} | Count={training.count}")
 
 		results = []
-
 		print("\n===== DEBUG SCORING START =====")
+
+		# --- Step 5: Calculate scores per member record ---
 		for member_data in all_member_data:
 			member = member_data.member
-			member_name = member.full_name or f"{member.first_name} {member.last_name}".strip() or "Unknown"
+			member_name = (member.full_name or f"{member.first_name} {member.last_name}").strip() or "Unknown"
+			member_key = member_name.lower()
 
-			training_key = (member_data.report.id, member.id)
-			training_count = training_data_dict.get(training_key, 0)
+			# Sum all training data across reports for same member
+			training_count = training_data_dict.get(member_key, 0)
 
-			# Guard against 0 or None weeks
+			# Avoid division by zero
 			total_weeks = member_data.report.total_weeks or 1
 
 			print(f"[DEBUG] {member_name} | Report ID: {member_data.report.id} | "
 			      f"Weeks={total_weeks} | RGI={member_data.RGI} RGO={member_data.RGO} "
-			      f"V={member_data.V} TYFCB={member_data.TYFCB} CEU={training_count}")
+			      f"V={member_data.V} TYFCB={member_data.TYFCB} Training={training_count}")
 
-			score_result = calculate_score_from_data(member_data, total_weeks, training_count)
+			score_result = calculate_score_from_data(
+				member_data,
+				total_weeks,
+				training_count
+			)
 
-			# Ensure name and report period are included
 			score_result['name'] = member_name
 			score_result['report_period'] = f"{member_data.report.start_date} → {member_data.report.end_date}"
+			results.append(score_result)
 
 			print(f"    => Total Score: {score_result.get('total_score', 'N/A')}")
-			results.append(score_result)
 
 		print("===== DEBUG SCORING END =====\n")
 
-		# Sort by score descending, then name
+		# --- Step 6: Sort by score descending then name ---
 		results.sort(key=lambda x: (-x.get('total_score', 0), x['name']))
 
 		context = {
@@ -324,9 +329,6 @@ def view_scoring(request: HttpRequest) -> HttpResponse:
 		}
 		return render(request, 'reports/view_scoring.html', context)
 
-	# --- Default view: show selection form only ---
-	context = {
-		'reports': ReportUpload.objects.all()[:20],
-	}
+	# --- Step 7: Default view (no date range selected) ---
+	context = {'reports': ReportUpload.objects.all()[:20]}
 	return render(request, 'reports/view_scoring.html', context)
-
