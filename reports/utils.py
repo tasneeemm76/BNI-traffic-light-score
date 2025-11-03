@@ -68,6 +68,74 @@ def parse_reporting_period_and_header(df_raw: pd.DataFrame) -> Tuple[Optional[da
 	return from_date, to_date, header_row_index
 
 
+def parse_training_period_and_header(df_raw: pd.DataFrame) -> Tuple[Optional[datetime], Optional[datetime], int]:
+    """
+    Detects the reporting period (From / To date) and header row index from a training Excel sheet.
+    Similar logic to parse_reporting_period_and_header().
+
+    Returns:
+        (from_date, to_date, header_row_index)
+    """
+    from datetime import datetime
+    import math
+    import pandas as pd
+    from typing import Any, Optional, Tuple
+
+    from_date: Optional[datetime] = None
+    to_date: Optional[datetime] = None
+    header_row_index: int = -1
+
+    def parse_date_flex(value: Any) -> Optional[datetime]:
+        if value is None or (isinstance(value, float) and math.isnan(value)):
+            return None
+        if isinstance(value, pd.Timestamp):
+            return value.to_pydatetime()
+        if isinstance(value, datetime):
+            return value
+        text = str(value).strip()
+        for fmt in ("%d-%m-%Y", "%d/%m/%Y", "%m-%d-%Y", "%m/%d/%Y", "%d-%m-%y", "%d/%m/%y", "%m-%d-%y", "%m/%d/%y"):
+            try:
+                return datetime.strptime(text, fmt)
+            except ValueError:
+                continue
+        return None
+
+    max_scan = min(50, len(df_raw))
+    for i in range(max_scan):
+        row = df_raw.iloc[i].tolist()
+
+        # Check for "From:" / "To:" markers
+        for j, cell in enumerate(row):
+            if pd.isna(cell):
+                continue
+            label = str(cell).strip().lower()
+
+            if label in ('from:', 'from'):
+                for k in range(j + 1, len(row)):
+                    if pd.isna(row[k]):
+                        continue
+                    maybe_date = parse_date_flex(row[k])
+                    if maybe_date:
+                        from_date = maybe_date
+                        break
+
+            elif label in ('to:', 'to'):
+                for k in range(j + 1, len(row)):
+                    if pd.isna(row[k]):
+                        continue
+                    maybe_date = parse_date_flex(row[k])
+                    if maybe_date:
+                        to_date = maybe_date
+                        break
+
+        # Detect header row (e.g. starts with "Member Name" or "First Name")
+        first_cell = str(df_raw.iloc[i, 0]).strip().lower() if df_raw.shape[1] > 0 else ''
+        if first_cell in ('member name', 'first name', 'name'):
+            header_row_index = i
+            break
+
+    return from_date, to_date, header_row_index
+
 def compute_total_weeks(from_date: Optional[datetime], to_date: Optional[datetime]) -> float:
 	if not from_date or not to_date:
 		return 1.0

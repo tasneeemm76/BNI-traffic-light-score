@@ -74,21 +74,36 @@ class MemberData(models.Model):
 	def __str__(self):
 		return f"{self.member.full_name} - {self.report}"
 
-
 class TrainingData(models.Model):
-	"""Stores training data count for each member in a report."""
-	report = models.ForeignKey(ReportUpload, on_delete=models.CASCADE, related_name='training_data', null=False, blank=False)
-	member = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='training_records', null=False, blank=False)
-	count = models.IntegerField(default=0, null=False, help_text="Number of training occurrences")
-	
-	class Meta:
-		ordering = ['member__last_name', 'member__first_name']
-		unique_together = ['report', 'member']
-		indexes = [
-			models.Index(fields=['report']),
-			models.Index(fields=['member']),
-		]
-	
-	def __str__(self):
-		return f"{self.member.full_name} - {self.count} training(s)"
+    """Stores training data count for each member and date range."""
+    report = models.ForeignKey(
+        ReportUpload,
+        on_delete=models.CASCADE,
+        related_name='training_data',
+        null=False,
+        blank=False
+    )
+    member = models.ForeignKey(
+        Member,
+        on_delete=models.CASCADE,
+        related_name='training_records',
+        null=False,
+        blank=False
+    )
+    count = models.IntegerField(default=0, null=False, help_text="Number of training occurrences")
+    start_date = models.DateField(null=True, blank=True, help_text="Start date of training data period")
+    end_date = models.DateField(null=True, blank=True, help_text="End date of training data period")
+
+    class Meta:
+        ordering = ['member__last_name', 'member__first_name']
+        # ✅ Allow multiple training files for the same member but with different date ranges
+        unique_together = ['member', 'start_date', 'end_date']
+        indexes = [
+            models.Index(fields=['member']),
+            models.Index(fields=['start_date', 'end_date']),
+        ]
+
+    def __str__(self):
+        range_text = f" ({self.start_date} → {self.end_date})" if self.start_date and self.end_date else ""
+        return f"{self.member.full_name} - {self.count} training(s){range_text}"
 

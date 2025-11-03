@@ -1,9 +1,12 @@
+import io
 from django.shortcuts import render, get_object_or_404
 from django.http import HttpRequest, HttpResponse, Http404
 from django.db import transaction
 from django.utils.dateparse import parse_date
 from datetime import date
 from typing import Dict, Any, Optional
+
+import pandas as pd
 
 from .utils import load_and_clean, score_dataframe, parse_training_counts
 from .models import ReportUpload, Member, MemberData, TrainingData
@@ -151,6 +154,11 @@ def calculate_score_from_data(member_data: MemberData, total_weeks: float, train
 		'arrival_color': _color_by_absolute(int(arriving_on_time_score), arriving_on_time_max),
 	}
 
+import io
+import pandas as pd
+from .utils import parse_training_period_and_header
+
+
 def upload_file(request: HttpRequest) -> HttpResponse:
 	if request.method == 'POST' and request.FILES.get('file'):
 		f = request.FILES['file']
@@ -158,18 +166,30 @@ def upload_file(request: HttpRequest) -> HttpResponse:
 		file_bytes = f.read()
 
 		try:
+			# --- Step 1: Parse main report file ---
 			df, weeks, months, from_date, to_date = load_and_clean(file_bytes, filename)
-			training_counts = None
 
+			training_counts = None
+			tr_from_date = None
+			tr_to_date = None
+
+			# --- Step 2: Handle training file if provided ---
 			if request.FILES.get('training_file'):
 				tr_f = request.FILES['training_file']
-				training_counts = parse_training_counts(tr_f.read(), tr_f.name)
+				tr_bytes = tr_f.read()
 
+				# Read as DataFrame to extract dates
+				tr_df = pd.read_excel(io.BytesIO(tr_bytes))
+				tr_from_date, tr_to_date, _ = parse_training_period_and_header(tr_df)
+
+				# Parse name-based training counts
+				training_counts = parse_training_counts(tr_bytes, tr_f.name)
+
+			# --- Step 3: Score main data ---
 			results = score_dataframe(df, weeks, months, training_counts)
 
-			# --- Save to database ---
+			# --- Step 4: Save to database ---
 			with transaction.atomic():
-				# Create a new report record
 				report_upload = ReportUpload.objects.create(
 					start_date=from_date.date() if from_date else date.today(),
 					end_date=to_date.date() if to_date else date.today(),
@@ -180,7 +200,6 @@ def upload_file(request: HttpRequest) -> HttpResponse:
 				print("\n===== DEBUG: Saving MemberData & TrainingData =====")
 				print(f"Training file entries: {len(training_counts or {})}\n")
 
-				# --- Step 1: Save all member data ---
 				for _, row in df.iterrows():
 					first_name = str(row.get('First Name', '')).strip()
 					last_name = str(row.get('Last Name', '')).strip()
@@ -193,6 +212,7 @@ def upload_file(request: HttpRequest) -> HttpResponse:
 						defaults={'full_name': f"{first_name} {last_name}".strip()}
 					)
 
+					# --- Save MemberData ---
 					MemberData.objects.update_or_create(
 						report=report_upload,
 						member=member,
@@ -214,27 +234,29 @@ def upload_file(request: HttpRequest) -> HttpResponse:
 						}
 					)
 
-					# --- Step 2: Always create a TrainingData record ---
-					training_count = 0
+					# --- Save TrainingData ---
 					if training_counts:
-						# Try exact full name match
 						name_key = f"{first_name} {last_name}".strip()
+						training_count = 0
+
 						if name_key in training_counts:
 							training_count = training_counts[name_key]
 						else:
-							# Try case-insensitive match
 							for key in training_counts.keys():
 								if key.lower().strip() == name_key.lower().strip():
 									training_count = training_counts[key]
 									break
 
-					TrainingData.objects.update_or_create(
-						report=report_upload,
-						member=member,
-						defaults={'count': int(training_count or 0)}
-					)
+						TrainingData.objects.update_or_create(
+							report=report_upload,
+							member=member,
+							start_date=tr_from_date.date() if tr_from_date else None,
+							end_date=tr_to_date.date() if tr_to_date else None,
+							defaults={'count': int(training_count or 0)}
+						)
 
-					print(f"Saved TrainingData → {member.full_name}: {training_count}")
+						print(f"Saved TrainingData → {member.full_name}: {training_count} "
+						      f"({tr_from_date} → {tr_to_date})")
 
 				print("===== DEBUG: Data Save Complete =====\n")
 
@@ -247,9 +269,7 @@ def upload_file(request: HttpRequest) -> HttpResponse:
 			return render(request, 'reports/results.html', context)
 
 		except Exception as e:
-			return render(request, 'reports/upload.html', {
-				'error': str(e)
-			})
+			return render(request, 'reports/upload.html', {'error': str(e)})
 
 	return render(request, 'reports/upload.html')
 
