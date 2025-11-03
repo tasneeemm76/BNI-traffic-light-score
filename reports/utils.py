@@ -68,24 +68,19 @@ def parse_reporting_period_and_header(df_raw: pd.DataFrame) -> Tuple[Optional[da
 	return from_date, to_date, header_row_index
 
 
+
 def parse_training_period_and_header(df_raw: pd.DataFrame) -> Tuple[Optional[datetime], Optional[datetime], int]:
     """
-    Detects the reporting period (From / To date) and header row index from a training Excel sheet.
-    Similar logic to parse_reporting_period_and_header().
-
-    Returns:
-        (from_date, to_date, header_row_index)
+    Detects From:/To: dates and header row in a BNI Training Report.
+    Ignores metadata above header rows.
+    Returns (from_date, to_date, header_row_index)
     """
-    from datetime import datetime
-    import math
-    import pandas as pd
-    from typing import Any, Optional, Tuple
-
     from_date: Optional[datetime] = None
     to_date: Optional[datetime] = None
     header_row_index: int = -1
 
     def parse_date_flex(value: Any) -> Optional[datetime]:
+        """Parse flexible date formats like 01-04-25, 01/04/2025, etc."""
         if value is None or (isinstance(value, float) and math.isnan(value)):
             return None
         if isinstance(value, pd.Timestamp):
@@ -100,16 +95,16 @@ def parse_training_period_and_header(df_raw: pd.DataFrame) -> Tuple[Optional[dat
                 continue
         return None
 
-    max_scan = min(50, len(df_raw))
+    # Scan first 60 rows (covers all metadata)
+    max_scan = min(60, len(df_raw))
     for i in range(max_scan):
         row = df_raw.iloc[i].tolist()
 
-        # Check for "From:" / "To:" markers
+        # Detect From:/To: dates inside early metadata rows
         for j, cell in enumerate(row):
             if pd.isna(cell):
                 continue
             label = str(cell).strip().lower()
-
             if label in ('from:', 'from'):
                 for k in range(j + 1, len(row)):
                     if pd.isna(row[k]):
@@ -117,8 +112,7 @@ def parse_training_period_and_header(df_raw: pd.DataFrame) -> Tuple[Optional[dat
                     maybe_date = parse_date_flex(row[k])
                     if maybe_date:
                         from_date = maybe_date
-                        break
-
+                    break
             elif label in ('to:', 'to'):
                 for k in range(j + 1, len(row)):
                     if pd.isna(row[k]):
@@ -126,11 +120,11 @@ def parse_training_period_and_header(df_raw: pd.DataFrame) -> Tuple[Optional[dat
                     maybe_date = parse_date_flex(row[k])
                     if maybe_date:
                         to_date = maybe_date
-                        break
+                    break
 
-        # Detect header row (e.g. starts with "Member Name" or "First Name")
-        first_cell = str(df_raw.iloc[i, 0]).strip().lower() if df_raw.shape[1] > 0 else ''
-        if first_cell in ('member name', 'first name', 'name'):
+        # Detect the actual data header row (Training Report always has these columns)
+        cells_lower = [str(c).strip().lower() for c in row]
+        if 'first name' in cells_lower and 'last name' in cells_lower:
             header_row_index = i
             break
 
