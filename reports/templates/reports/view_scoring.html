@@ -135,17 +135,38 @@
             Showing scores from {{ start_date }} to {{ end_date }}
         </div>
     {% endif %}
+
 <h2>📅 Available Months</h2>
-<ul>
+{% if message %}
+    <p style="color: green;">{{ message }}</p>
+{% endif %}
+
+<table border="1" cellpadding="6">
+  <tr>
+    <th>Month</th>
+    <th>View</th>
+    <th>Delete</th>
+  </tr>
   {% for m in month_list %}
-    <li>
-      <a href="?start_date={{ m.start }}&end_date={{ m.end }}">
-        {{ m.label }}
-      </a>
-    </li>
+  <tr>
+    <td>{{ m.label }}</td>
+    <td><a href="?start_date={{ m.start }}&end_date={{ m.end }}">View</a></td>
+    <td>
+      <form method="POST" style="display:inline;">
+        {% csrf_token %}
+        <input type="hidden" name="year" value="{{ m.year }}">
+        <input type="hidden" name="month" value="{{ m.month }}">
+        <button type="submit" name="delete_month" onclick="return confirm('Delete all data for {{ m.label }}?');">
+          🗑 Delete
+        </button>
+      </form>
+    </td>
+  </tr>
   {% endfor %}
-</ul>
+</table>
 <hr>
+
+
     {% if results %}
         <div class="actions">
             <a href="{% url 'upload_file' %}" class="btn">Upload New File</a>

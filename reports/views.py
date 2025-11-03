@@ -297,42 +297,61 @@ def upload_file(request: HttpRequest) -> HttpResponse:
         return render(request, 'reports/upload.html', {'error': str(e)})
 	
 
+
 from django.utils.dateparse import parse_date
-from django.db.models import Min, Max
+from django.db.models import Q
+from django.db import transaction
 from collections import defaultdict
 import calendar
-from datetime import date
+from datetime import date, datetime
 
 def view_scoring(request: HttpRequest) -> HttpResponse:
     """
-    View scoring data for a selected date range or month.
-    Shows available months in ascending order and allows month-based filtering.
+    View scoring data with monthly listing and delete option.
     """
 
-    # --- Fetch all reports for month list ---
+    # --- Handle delete request first ---
+    if request.method == "POST" and "delete_month" in request.POST:
+        year = int(request.POST.get("year"))
+        month = int(request.POST.get("month"))
+        first_day = date(year, month, 1)
+        last_day = date(year, month, calendar.monthrange(year, month)[1])
+
+        try:
+            with transaction.atomic():
+                # Identify reports within that month
+                reports_to_delete = ReportUpload.objects.filter(
+                    start_date__gte=first_day,
+                    end_date__lte=last_day
+                )
+
+                if reports_to_delete.exists():
+                    # Delete related data
+                    MemberData.objects.filter(report__in=reports_to_delete).delete()
+                    TrainingData.objects.filter(report__in=reports_to_delete).delete()
+                    reports_to_delete.delete()
+
+                    message = f"✅ All data for {calendar.month_name[month]} {year} deleted successfully."
+                else:
+                    message = f"⚠️ No reports found for {calendar.month_name[month]} {year}."
+
+        except Exception as e:
+            message = f"❌ Error deleting {calendar.month_name[month]} {year}: {str(e)}"
+
+        # After delete, reload the page
+        all_reports = ReportUpload.objects.all().order_by("start_date")
+        month_list = _get_month_list(all_reports)
+        return render(request, "reports/view_scoring.html", {
+            "month_list": month_list,
+            "message": message,
+            "reports": all_reports,
+        })
+
+    # --- Regular GET logic below ---
+
     all_reports = ReportUpload.objects.all().order_by("start_date")
+    month_list = _get_month_list(all_reports)
 
-    # --- Build month list (unique (year, month)) ---
-    month_list = []
-    for r in all_reports:
-        if r.start_date:
-            month_key = (r.start_date.year, r.start_date.month)
-            if month_key not in month_list:
-                month_list.append(month_key)
-
-    # Convert to readable month names
-    month_display = [
-        {
-            "year": y,
-            "month": m,
-            "label": f"{calendar.month_name[m]} {y}",
-            "start": date(y, m, 1).isoformat(),
-            "end": date(y, m, calendar.monthrange(y, m)[1]).isoformat(),
-        }
-        for (y, m) in sorted(month_list)
-    ]
-
-    # --- Get filters from request ---
     start_date_str = request.GET.get("start_date")
     end_date_str = request.GET.get("end_date")
 
@@ -342,12 +361,11 @@ def view_scoring(request: HttpRequest) -> HttpResponse:
 
         if not start_date or not end_date:
             return render(request, "reports/view_scoring.html", {
-                "error": "Invalid date format. Please use YYYY-MM-DD.",
-                "month_list": month_display,
+                "error": "Invalid date format.",
+                "month_list": month_list,
                 "reports": all_reports,
             })
 
-        # --- Filter reports overlapping range ---
         reports = ReportUpload.objects.filter(
             start_date__lte=end_date,
             end_date__gte=start_date
@@ -355,29 +373,21 @@ def view_scoring(request: HttpRequest) -> HttpResponse:
 
         if not reports.exists():
             return render(request, "reports/view_scoring.html", {
-                "error": f"No reports found for {start_date_str} to {end_date_str}",
-                "month_list": month_display,
-                "start_date": start_date_str,
-                "end_date": end_date_str,
+                "error": f"No reports found for {start_date_str} → {end_date_str}",
+                "month_list": month_list,
                 "reports": all_reports,
             })
 
-        # --- Load core MemberData ---
-        all_member_data = MemberData.objects.filter(
-            report__in=reports
-        ).select_related("member", "report")
-
-        # --- Load TrainingData ---
+        all_member_data = MemberData.objects.filter(report__in=reports).select_related("member", "report")
         training_data_dict = defaultdict(int)
-        training_records = TrainingData.objects.filter(report__in=reports).select_related("member", "report")
-        for t in training_records:
+
+        for t in TrainingData.objects.filter(report__in=reports).select_related("member", "report"):
             training_data_dict[t.member.id] += t.count
 
-        # --- Combine results ---
         results = []
         for member_data in all_member_data:
             member = member_data.member
-            member_name = member.full_name or f"{member.first_name} {member.last_name}".strip() or "Unknown"
+            member_name = member.full_name or f"{member.first_name} {member.last_name}".strip()
             total_weeks = member_data.report.total_weeks or 1
 
             training_count = training_data_dict.get(member.id, 0)
@@ -397,14 +407,34 @@ def view_scoring(request: HttpRequest) -> HttpResponse:
 
         return render(request, "reports/view_scoring.html", {
             "results": results,
+            "month_list": month_list,
             "start_date": start_date_str,
             "end_date": end_date_str,
-            "month_list": month_display,
             "reports": all_reports,
         })
 
-    # --- Default view (no date selected) ---
     return render(request, "reports/view_scoring.html", {
-        "month_list": month_display,
+        "month_list": month_list,
         "reports": all_reports,
     })
+
+
+# --- helper function ---
+def _get_month_list(all_reports):
+    """Generate a sorted list of available months."""
+    month_list = []
+    for r in all_reports:
+        if r.start_date:
+            key = (r.start_date.year, r.start_date.month)
+            if key not in month_list:
+                month_list.append(key)
+    return [
+        {
+            "year": y,
+            "month": m,
+            "label": f"{calendar.month_name[m]} {y}",
+            "start": date(y, m, 1).isoformat(),
+            "end": date(y, m, calendar.monthrange(y, m)[1]).isoformat(),
+        }
+        for (y, m) in sorted(month_list)
+    ]
