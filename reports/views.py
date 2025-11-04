@@ -518,42 +518,40 @@ def delete_report(request, start, end):
     return redirect('view_scoring')
 
 
-
 import logging
 from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.db.models import Count
 from calendar import month_name
 from .models import MemberData
-from .views import calculate_score_from_data  # if it's in the same file, remove this import
 
 logger = logging.getLogger(__name__)
 
 def score_summary(request):
     """
-    Displays a monthly summary of total scores.
-    Debug mode enabled to trace internal flow.
+    Displays a monthly summary of total scores (6-month table).
     """
     try:
         logger.info("Starting score_summary view...")
 
-        # --- Handle delete action ---
+        # Handle delete requests
         if request.method == "POST":
             start_date = request.POST.get("start_date")
             end_date = request.POST.get("end_date")
             logger.debug(f"POST delete request for {start_date} → {end_date}")
             if start_date and end_date:
                 deleted, _ = MemberData.objects.filter(
-                    start_date=start_date, end_date=end_date
+                    report__start_date=start_date,
+                    report__end_date=end_date
                 ).delete()
                 messages.success(request, f"Deleted {deleted} records for {start_date} → {end_date}")
                 return redirect("score_summary")
 
-        # --- Get all unique periods ---
+        # --- Get all distinct report date ranges ---
         periods = (
-            MemberData.objects.values("start_date", "end_date")
+            MemberData.objects.values("report__start_date", "report__end_date")
             .annotate(count=Count("id"))
-            .order_by("start_date")
+            .order_by("report__start_date")
         )
 
         if not periods.exists():
@@ -567,8 +565,8 @@ def score_summary(request):
         detailed_data = []
 
         for p in periods:
-            start_date = p["start_date"]
-            end_date = p["end_date"]
+            start_date = p["report__start_date"]
+            end_date = p["report__end_date"]
             if not start_date or not end_date:
                 logger.warning(f"Skipping invalid record: {p}")
                 continue
@@ -577,7 +575,8 @@ def score_summary(request):
             logger.info(f"Processing {month_label} ({start_date} → {end_date})")
 
             members = MemberData.objects.filter(
-                report__start_date=start_date, report__end_date=end_date
+                report__start_date=start_date,
+                report__end_date=end_date
             ).select_related("member", "report")
 
             if not members.exists():
@@ -585,8 +584,6 @@ def score_summary(request):
                 continue
 
             total_weeks = max(1, ((end_date - start_date).days / 7))
-            logger.debug(f"Total weeks for {month_label}: {total_weeks}")
-
             total_score = 0
             rows = []
 
@@ -599,7 +596,6 @@ def score_summary(request):
                     logger.exception(f"Error calculating score for {m.member.full_name}: {e}")
 
             if not rows:
-                logger.warning(f"No rows for {month_label}")
                 continue
 
             avg_score = round(total_score / len(rows), 2)
