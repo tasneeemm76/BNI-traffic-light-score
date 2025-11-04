@@ -553,7 +553,7 @@ def score_summary(request):
         raw_scores = defaultdict(dict)
 
         for report in reports:
-            month_label = report.start_date.strftime("%b %y")
+            month_label = report.end_date.strftime("%b %y")
             if month_label not in months:
                 months.append(month_label)
 
