@@ -101,9 +101,8 @@
             <div class="legend-item"><div class="box" style="background:#ff0000"></div> 30–49%</div>
             <div class="legend-item"><div class="box" style="background:#808080"></div> &lt;30%</div>
         </div>
-    {% endif %}
 
-    <table>
+         <table>
   <thead>
     <tr>
       <th>Reporting Period</th>
@@ -118,7 +117,7 @@
         <td>{{ color }}</td>
         {% for month in months %}
           <td>
-            {{ month_color_pct|default:{}|dict_get:month|default:{}|dict_get:color|default:"0" }}%
+{{ month_color_pct[month][color]|default_if_none:"0" }}%
           </td>
         {% endfor %}
       </tr>
@@ -126,5 +125,8 @@
   </tbody>
 </table>
 
+ 
+
+   
 </body>
 </html>

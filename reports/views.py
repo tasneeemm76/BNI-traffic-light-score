@@ -551,7 +551,6 @@ def is_ignored_member(member_name: str) -> bool:
     return member_name.strip().lower() in ignored_names
 
 def score_summary(request):
-    """Display a color-coded score heatmap: Member × Month."""
     reports = (
         ReportUpload.objects
         .prefetch_related("member_data", "training_data")
@@ -616,9 +615,7 @@ def score_summary(request):
                     "color": _color_by_absolute(score, max_score)
                 })
         table_data.append(row)
-        
-    # --- Calculate color band percentages for each month ---
-    # Define color bands according to your logic
+
     def color_band(score):
         percent = (score / max_score) * 100.0 if max_score > 0 else 0
         if percent >= 70:
@@ -631,11 +628,10 @@ def score_summary(request):
             return 'Grey'
 
     color_labels = ['Green', 'Amber', 'Red', 'Grey']
-    # month_color_pct: {month: {color: percent}}
     month_color_pct = {}
 
     for month in months:
-        # Gather all member scores (ignore "-" or None)
+        # Gather all member scores for this month, ignoring "-" or None
         month_scores = [
             raw_scores[member].get(month)
             for member in sorted_members
