@@ -517,57 +517,66 @@ def delete_report(request, start, end):
     return redirect('view_scoring')
 
 
-
 from collections import defaultdict
-from datetime import date
 from django.shortcuts import render
 from django.db.models import Prefetch
-from .models import MemberData, ReportUpload, TrainingData
-from typing import Optional, Dict, Any
+from datetime import datetime
+from .models import ReportUpload, MemberData, TrainingData
+
 
 def score_summary(request):
     """
-    View that calculates the total score for each month by iterating
-    all MemberData, calculating score using your existing function,
-    and summing total scores per month.
+    View: Display month-wise total scores for each member.
+    Steps:
+    1. Fetch all ReportUpload records (with related MemberData + TrainingData)
+    2. Sort them month-wise by start_date
+    3. Calculate total score for each member per month
+    4. Display as: month → [(member_name, total_score)]
     """
-
-    # Get all reports ordered by start_date
-    all_reports = ReportUpload.objects.order_by('start_date')
-
-    # Dictionary: {month_key (YYYY-MM) : total score}
-    monthly_totals = defaultdict(int)
-
-    # Prefetch related member data and training data to reduce DB queries
-    reports_with_data = all_reports.prefetch_related(
-        Prefetch('member_data', queryset=MemberData.objects.select_related('member')),
-        Prefetch('training_data')
+    # Step 1: Fetch all reports with related data
+    reports = (
+        ReportUpload.objects
+        .prefetch_related(
+            Prefetch('member_data', queryset=MemberData.objects.select_related('member')),
+            Prefetch('training_data', queryset=TrainingData.objects.select_related('member')),
+        )
+        .order_by('start_date')
     )
 
-    for report in reports_with_data:
-        month_key = report.start_date.strftime('%Y-%m')
-        total_weeks = report.total_weeks or 1.0
+    # Step 2: Prepare structure → month_year → member_name → total_score
+    monthly_scores = defaultdict(lambda: defaultdict(float))
 
-        # Prepare training count map: {member_id: training_count}
-        training_counts = {td.member_id: td.count for td in report.training_data.all()}
+    for report in reports:
+        # Format month-year label (e.g., "June 2025")
+        month_label = report.start_date.strftime("%B %Y")
 
+        # Prepare lookup for training counts (by member)
+        training_lookup = {
+            t.member_id: t.count for t in report.training_data.all()
+        }
+
+        # Step 3: Calculate total score per member for this report
         for md in report.member_data.all():
-            training_count = training_counts.get(md.member_id, 0) + md.CEU
+            training_count = training_lookup.get(md.member_id)
+            score_info = calculate_score_from_data(md, report.total_weeks, training_count)
+            member_name = score_info["name"]
+            total_score = score_info["total_score"]
 
-            # Calculate score for this member data row, using your existing code
-            score_dict: Dict[str, Any] = calculate_score_from_data(
-                member_data=md,
-                total_weeks=total_weeks,
-                training_count=training_count,
-            )
+            # Add up scores month-wise (in case multiple uploads fall in same month)
+            monthly_scores[month_label][member_name] += total_score
 
-            # Add individual total_score to month's sum
-            monthly_totals[month_key] += score_dict.get('total_score', 0)
+    # Step 4: Convert to displayable list
+    # [{month: "June 2025", scores: [{"name": "John", "score": 75}, ...]}, ...]
+    results = []
+    for month_label, members in monthly_scores.items():
+        month_data = [
+            {"name": name, "score": round(score, 2)} for name, score in sorted(members.items())
+        ]
+        results.append({"month": month_label, "members": month_data})
 
-    # Convert the result dict to a sorted list of dicts for template rendering
-    sorted_monthly_scores = sorted(
-        [{'month': k, 'total_score': v} for k, v in monthly_totals.items()],
-        key=lambda x: x['month']
+    # Sort months chronologically by converting back to date
+    results.sort(
+        key=lambda x: datetime.strptime(x["month"], "%B %Y")
     )
 
-    return render(request, 'reports/score_summary.html', {'scores': sorted_monthly_scores})
+    return render(request, "reports/score_summary.html", {"results": results})
