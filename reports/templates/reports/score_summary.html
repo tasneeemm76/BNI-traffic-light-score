@@ -102,27 +102,7 @@
             <div class="legend-item"><div class="box" style="background:#808080"></div> &lt;30%</div>
         </div>
 
-         <table>
-  <thead>
-    <tr>
-      <th>Reporting Period</th>
-      {% for month in months %}
-        <th>{{ month }}</th>
-      {% endfor %}
-    </tr>
-  </thead>
-  <tbody>
-    {% for color in "Green Amber Red Grey".split %}
-      <tr>
-        <td>{{ color }}</td>
-        {% for month in months %}
-          <td>
-{{ month_color_pct[month][color]|default_if_none:"0" }}%
-          </td>
-        {% endfor %}
-      </tr>
-    {% endfor %}
-  </tbody>
+       
 </table>
 
  
