@@ -544,6 +544,13 @@ def _color_by_absolute(score: int, max_score: int) -> str:
     else:
         return "#808080"  # Gray
 
+def is_ignored_member(member_name: str) -> bool:
+    if not member_name:
+        return False
+    ignored_names = {"Visitors", "BNI", "Total"}
+    return member_name.strip().lower() in ignored_names
+
+
 def score_summary(request):
     """Display a color-coded score heatmap: Member × Month."""
     reports = (
@@ -569,6 +576,11 @@ def score_summary(request):
 
         for md in report.member_data.all():
             member_name = md.member.full_name or f"{md.member.first_name} {md.member.last_name}".strip()
+
+            # Skip ignored members
+            if is_ignored_member(member_name):
+                continue
+
             member_names.add(member_name)
 
             total_training = (md.CEU or 0) + training_lookup.get(md.member_id, 0)
