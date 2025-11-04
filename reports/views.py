@@ -304,7 +304,6 @@ from django.db import transaction
 from collections import defaultdict
 import calendar
 from datetime import date, datetime
-
 def view_scoring(request: HttpRequest) -> HttpResponse:
     """
     View scoring data with monthly listing and delete option.
@@ -380,10 +379,18 @@ def view_scoring(request: HttpRequest) -> HttpResponse:
             training_data_dict[t.member.id] += t.count
 
         results = []
+        seen_members = set()  # Track members already processed for this report period
+
         for member_data in all_member_data:
             member = member_data.member
             member_name = member.full_name or f"{member.first_name} {member.last_name}".strip()
             total_weeks = member_data.report.total_weeks or 1
+
+            # ✅ Unique key based on member + report date range
+            unique_key = (member.id, member_data.report.start_date, member_data.report.end_date)
+            if unique_key in seen_members:
+                continue  # Skip duplicate entries (from multiple uploads)
+            seen_members.add(unique_key)
 
             training_count = training_data_dict.get(member.id, 0)
             total_training_value = member_data.CEU + training_count
@@ -412,7 +419,6 @@ def view_scoring(request: HttpRequest) -> HttpResponse:
         "month_list": month_list,
         "reports": all_reports,
     })
-
 
 # --- helper function ---
 def _get_month_list(all_reports):
