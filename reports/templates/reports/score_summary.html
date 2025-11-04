@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>BNI Score Summary</title>
+    <style>
+        body { font-family: Arial; margin: 40px; }
+        table { border-collapse: collapse; width: 100%; margin-bottom: 40px; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+        th { background: #f2f2f2; }
+        .delete-btn {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 6px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .chip {
+            border-radius: 4px;
+            color: white;
+            padding: 4px 8px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+<h1>Score Summary by Period</h1>
+
+{% for period in summary_data %}
+    <h2>{{ period.start_date }} → {{ period.end_date }}</h2>
+    <form method="post" style="margin-bottom:10px;">
+        {% csrf_token %}
+        <input type="hidden" name="start_date" value="{{ period.start_date }}">
+        <input type="hidden" name="end_date" value="{{ period.end_date }}">
+        <button type="submit" class="delete-btn">Delete this month</button>
+    </form>
+
+    <p><strong>Members:</strong> {{ period.member_count }} |
+       <strong>Average Score:</strong> {{ period.avg_score }}</p>
+
+    <table>
+        <tr>
+            <th>Name</th>
+            <th>Total Score</th>
+            <th>Arriving on Time</th>
+            <th>Visitors</th>
+            <th>Referrals</th>
+            <th>Training</th>
+            <th>TYFCB</th>
+        </tr>
+        {% for row in period.rows %}
+        <tr>
+            <td>{{ row.name }}</td>
+            <td style="background:{{ row.color }};color:white;">{{ row.total_score }}</td>
+            <td><span class="chip" style="background:{{ row.arrival_color }};">{{ row.arriving_on_time_score }}</span></td>
+            <td><span class="chip" style="background:{{ row.visitors_week_color }};">{{ row.visitors_week_score }}</span></td>
+            <td><span class="chip" style="background:{{ row.referrals_week_color }};">{{ row.referrals_week_score }}</span></td>
+            <td><span class="chip" style="background:{{ row.training_color }};">{{ row.training_score }}</span></td>
+            <td><span class="chip" style="background:{{ row.tyfcb_color }};">{{ row.tyfcb_score }}</span></td>
+        </tr>
+        {% endfor %}
+    </table>
+{% empty %}
+    <p>No score data available.</p>
+{% endfor %}
+</body>
+</html>
