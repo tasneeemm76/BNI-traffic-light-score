@@ -1,61 +1,126 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
     <title>Monthly Score Summary</title>
     <style>
         body {
             font-family: Arial, sans-serif;
-            margin: 40px;
             background: #fafafa;
+            margin: 40px;
             color: #333;
         }
-        h1 { text-align: center; }
-        .month-section {
+
+        h1 {
+            text-align: center;
             margin-bottom: 40px;
-            padding: 20px;
+        }
+
+        .month-section {
             background: white;
             border-radius: 10px;
             box-shadow: 0 0 8px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-bottom: 40px;
         }
+
+        h2 {
+            margin-bottom: 10px;
+            color: #007bff;
+        }
+
         table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 10px;
         }
+
         th, td {
-            border: 1px solid #ccc;
             padding: 8px 12px;
+            border: 1px solid #ccc;
             text-align: left;
         }
-        th { background: #f2f2f2; }
-        tr:nth-child(even) { background: #f9f9f9; }
+
+        th {
+            background: #f2f2f2;
+        }
+
+        tr:nth-child(even) {
+            background: #f9f9f9;
+        }
+
+        .export-btn {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            padding: 8px 14px;
+            border-radius: 5px;
+            cursor: pointer;
+            display: block;
+            margin: 0 auto 20px auto;
+        }
+
+        .export-btn:hover {
+            background-color: #218838;
+        }
     </style>
 </head>
 <body>
-    <h1>Member Score Summary (Month-wise)</h1>
 
-    {% for result in results %}
+<h1>All Members – Monthly Score Summary</h1>
+
+{% if error %}
+    <p style="text-align:center; color:red;">{{ error }}</p>
+{% endif %}
+
+{% if results %}
+    <button class="export-btn" onclick="exportToCSV()">⬇ Export All Data to CSV</button>
+
+    {% for month_label, members in results %}
         <div class="month-section">
-            <h2>{{ result.month }}</h2>
+            <h2>{{ month_label }}</h2>
             <table>
                 <thead>
                     <tr>
                         <th>Member Name</th>
                         <th>Total Score</th>
+                        <th>Report Period</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for m in result.members %}
+                    {% for m in members %}
                         <tr>
                             <td>{{ m.name }}</td>
-                            <td>{{ m.score }}</td>
+                            <td>{{ m.total_score }}</td>
+                            <td>{{ m.report_period }}</td>
                         </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
-    {% empty %}
-        <p>No score data available.</p>
     {% endfor %}
+{% else %}
+    <p style="text-align:center;">No score data available.</p>
+{% endif %}
+
+<script>
+function exportToCSV() {
+    const rows = [['Month', 'Member Name', 'Total Score', 'Report Period']];
+    document.querySelectorAll('.month-section').forEach(section => {
+        const month = section.querySelector('h2').innerText;
+        section.querySelectorAll('tbody tr').forEach(tr => {
+            const cols = Array.from(tr.querySelectorAll('td')).map(td => td.innerText);
+            rows.push([month, ...cols]);
+        });
+    });
+    const csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
+    const link = document.createElement("a");
+    link.href = encodeURI(csvContent);
+    link.download = "monthly_score_summary.csv";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+</script>
+
 </body>
 </html>

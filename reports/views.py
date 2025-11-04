@@ -516,24 +516,26 @@ def delete_report(request, start, end):
     
     return redirect('view_scoring')
 
-
 from collections import defaultdict
 from django.shortcuts import render
 from django.db.models import Prefetch
 from datetime import datetime
+import logging
+
 from .models import ReportUpload, MemberData, TrainingData
+
+logger = logging.getLogger(__name__)
 
 
 def score_summary(request):
     """
-    View: Display month-wise total scores for each member.
-    Steps:
-    1. Fetch all ReportUpload records (with related MemberData + TrainingData)
-    2. Sort them month-wise by start_date
-    3. Calculate total score for each member per month
-    4. Display as: month → [(member_name, total_score)]
+    Show all available months with each member's total score per month.
+    - Automatically groups reports by month (start_date)
+    - Combines CEU + TrainingData.count
+    - Displays only final total_score (member_name + total_score + period)
     """
-    # Step 1: Fetch all reports with related data
+
+    # Fetch all reports (with related data for efficiency)
     reports = (
         ReportUpload.objects
         .prefetch_related(
@@ -543,40 +545,53 @@ def score_summary(request):
         .order_by('start_date')
     )
 
-    # Step 2: Prepare structure → month_year → member_name → total_score
-    monthly_scores = defaultdict(lambda: defaultdict(float))
+    if not reports.exists():
+        return render(request, "reports/score_summary.html", {"error": "No reports found."})
+
+    # Data structure: month_label → list of {member, score, period}
+    month_summary = defaultdict(list)
 
     for report in reports:
-        # Format month-year label (e.g., "June 2025")
         month_label = report.start_date.strftime("%B %Y")
+        total_weeks = report.total_weeks or 1.0
 
-        # Prepare lookup for training counts (by member)
+        # Build training lookup for this report
         training_lookup = {
-            t.member_id: t.count for t in report.training_data.all()
+            t.member_id: (t.count or 0) for t in report.training_data.all()
         }
 
-        # Step 3: Calculate total score per member for this report
         for md in report.member_data.all():
-            training_count = training_lookup.get(md.member_id)
-            score_info = calculate_score_from_data(md, report.total_weeks, training_count)
-            member_name = score_info["name"]
-            total_score = score_info["total_score"]
+            training_count = training_lookup.get(md.member_id, 0)
+            total_training_value = (md.CEU or 0) + training_count
 
-            # Add up scores month-wise (in case multiple uploads fall in same month)
-            monthly_scores[month_label][member_name] += total_score
+            # Calculate total score using your logic
+            score_info = calculate_score_from_data(
+                member_data=md,
+                total_weeks=total_weeks,
+                training_count=total_training_value,
+            )
 
-    # Step 4: Convert to displayable list
-    # [{month: "June 2025", scores: [{"name": "John", "score": 75}, ...]}, ...]
-    results = []
-    for month_label, members in monthly_scores.items():
-        month_data = [
-            {"name": name, "score": round(score, 2)} for name, score in sorted(members.items())
-        ]
-        results.append({"month": month_label, "members": month_data})
+            member_name = md.member.full_name or f"{md.member.first_name} {md.member.last_name}".strip()
+            total_score = int(score_info.get("total_score", 0))
 
-    # Sort months chronologically by converting back to date
-    results.sort(
-        key=lambda x: datetime.strptime(x["month"], "%B %Y")
+            month_summary[month_label].append({
+                "name": member_name,
+                "total_score": total_score,
+                "report_period": f"{report.start_date} → {report.end_date}"
+            })
+
+    # Sort members within each month (descending by score)
+    for month_label, member_list in month_summary.items():
+        member_list.sort(key=lambda x: (-x["total_score"], x["name"]))
+
+    # Sort months chronologically
+    sorted_results = sorted(
+        month_summary.items(),
+        key=lambda x: datetime.strptime(x[0], "%B %Y")
     )
 
-    return render(request, "reports/score_summary.html", {"results": results})
+    logger.info(f"score_summary: Generated summary for {len(sorted_results)} months")
+
+    return render(request, "reports/score_summary.html", {
+        "results": sorted_results,  # list of (month_label, member_scores)
+    })
