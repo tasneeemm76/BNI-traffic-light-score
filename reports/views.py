@@ -298,143 +298,19 @@ def upload_file(request: HttpRequest) -> HttpResponse:
         return render(request, 'reports/upload.html', {'error': str(e)})
 	
 
+
+import logging
 from django.utils.dateparse import parse_date
 from django.db import transaction
 from collections import defaultdict
 from django.shortcuts import render
 from django.http import HttpRequest, HttpResponse
 from .models import ReportUpload, MemberData, TrainingData
+import calendar
+
+logger = logging.getLogger(__name__)
 
 
-def view_scoring(request: HttpRequest) -> HttpResponse:
-    """
-    Displays monthly scoring summaries with delete option.
-    Deduplicates multiple uploads (e.g., PALM + Training) for same date range.
-    """
-
-    # --- Handle delete request by date range ---
-    if request.method == "POST" and "delete_range" in request.POST:
-        start_str = request.POST.get("start_date")
-        end_str = request.POST.get("end_date")
-
-        try:
-            start = parse_date(start_str)
-            end = parse_date(end_str)
-            if not start or not end:
-                raise ValueError("Invalid date format.")
-
-            with transaction.atomic():
-                deleted_count, _ = ReportUpload.objects.filter(
-                    start_date=start,
-                    end_date=end
-                ).delete()
-
-            message = (
-                f"✅ Report from {start} → {end} deleted successfully."
-                if deleted_count > 0
-                else f"⚠️ No report found for {start} → {end}."
-            )
-
-        except Exception as e:
-            message = f"❌ Error deleting report: {str(e)}"
-
-        all_reports = ReportUpload.objects.all().order_by("start_date")
-        month_list = _get_month_list(all_reports)
-        return render(request, "reports/view_scoring.html", {
-            "month_list": month_list,
-            "message": message,
-            "reports": all_reports,
-        })
-
-    # --- Regular GET: list or view results ---
-    all_reports = ReportUpload.objects.all().order_by("start_date")
-    month_list = _get_month_list(all_reports)
-
-    start_date_str = request.GET.get("start_date")
-    end_date_str = request.GET.get("end_date")
-
-    # No range selected → show default page
-    if not (start_date_str and end_date_str):
-        return render(request, "reports/view_scoring.html", {
-            "month_list": month_list,
-            "reports": all_reports,
-        })
-
-    # --- Parse and validate input dates ---
-    start_date = parse_date(start_date_str)
-    end_date = parse_date(end_date_str)
-    if not start_date or not end_date:
-        return render(request, "reports/view_scoring.html", {
-            "error": "Invalid date format.",
-            "month_list": month_list,
-            "reports": all_reports,
-        })
-
-    # --- Fetch all reports in selected range ---
-    reports = ReportUpload.objects.filter(
-        start_date__lte=end_date,
-        end_date__gte=start_date
-    ).distinct()
-
-    if not reports.exists():
-        return render(request, "reports/view_scoring.html", {
-            "error": f"No reports found for {start_date_str} → {end_date_str}",
-            "month_list": month_list,
-            "reports": all_reports,
-        })
-
-    # ✅ Group reports by identical (start_date, end_date)
-    period_groups = {}
-    for r in reports:
-        key = (r.start_date, r.end_date)
-        period_groups.setdefault(key, []).append(r)
-
-    results = []
-
-    # --- Process each unique period ---
-    for (start_period, end_period), report_group in period_groups.items():
-        all_member_data = MemberData.objects.filter(report__in=report_group).select_related("member", "report")
-
-        # Aggregate training data across all uploads for this period
-        training_data_dict = defaultdict(int)
-        for t in TrainingData.objects.filter(report__in=report_group).select_related("member", "report"):
-            training_data_dict[t.member.id] += t.count
-
-        seen_members = set()
-
-        for member_data in all_member_data:
-            member = member_data.member
-            if member.id in seen_members:
-                continue  # skip duplicates
-            seen_members.add(member.id)
-
-            total_weeks = member_data.report.total_weeks or 1
-            training_count = training_data_dict.get(member.id, 0)
-            total_training_value = member_data.CEU + training_count
-
-            score_result = calculate_score_from_data(
-                member_data=member_data,
-                total_weeks=total_weeks,
-                training_count=total_training_value,
-            )
-
-            score_result["name"] = member.full_name or f"{member.first_name} {member.last_name}".strip()
-            score_result["report_period"] = f"{start_period} → {end_period}"
-            results.append(score_result)
-
-    # Sort by total score descending, name ascending
-    results.sort(key=lambda x: (-x.get("total_score", 0), x["name"]))
-
-    return render(request, "reports/view_scoring.html", {
-        "results": results,
-        "month_list": month_list,
-        "start_date": start_date_str,
-        "end_date": end_date_str,
-        "reports": all_reports,
-    })
-
-
-# --- Helper function ---
 def _get_month_list(all_reports):
     """Generate a sorted list of available months."""
     month_list = []
@@ -453,6 +329,190 @@ def _get_month_list(all_reports):
         }
         for (y, m) in sorted(month_list)
     ]
+
+
+def view_scoring(request: HttpRequest) -> HttpResponse:
+    """
+    View scoring with robust deduplication and detailed debug logging.
+
+    Strategy for duplicates:
+      - Group all ReportUpload objects by identical (start_date, end_date).
+      - For each group, gather all MemberData rows.
+      - If a member appears multiple times in the group (e.g. PALM + Training file rows),
+        choose the MemberData row with the highest metric-sum as the representative.
+      - Aggregate TrainingData counts across the group and combine with CEU for scoring.
+    """
+
+    # --- Handle delete request by specific start & end date ---
+    if request.method == "POST" and "delete_range" in request.POST:
+        start_str = request.POST.get("start_date")
+        end_str = request.POST.get("end_date")
+        try:
+            start = parse_date(start_str)
+            end = parse_date(end_str)
+            if not start or not end:
+                raise ValueError("Invalid date format.")
+
+            with transaction.atomic():
+                deleted_count, _ = ReportUpload.objects.filter(
+                    start_date=start,
+                    end_date=end
+                ).delete()
+
+            message = (
+                f"✅ Report from {start} → {end} deleted successfully."
+                if deleted_count > 0
+                else f"⚠️ No report found for {start} → {end}."
+            )
+        except Exception as e:
+            message = f"❌ Error deleting report: {str(e)}"
+
+        all_reports = ReportUpload.objects.all().order_by("start_date")
+        month_list = _get_month_list(all_reports)
+        return render(request, "reports/view_scoring.html", {
+            "month_list": month_list,
+            "message": message,
+            "reports": all_reports,
+        })
+
+    # --- Regular GET logic ---
+    all_reports = ReportUpload.objects.all().order_by("start_date")
+    month_list = _get_month_list(all_reports)
+
+    start_date_str = request.GET.get("start_date")
+    end_date_str = request.GET.get("end_date")
+
+    # If no date range selected, render the default screen
+    if not (start_date_str and end_date_str):
+        return render(request, "reports/view_scoring.html", {
+            "month_list": month_list,
+            "reports": all_reports,
+        })
+
+    # Parse dates
+    start_date = parse_date(start_date_str)
+    end_date = parse_date(end_date_str)
+    if not start_date or not end_date:
+        return render(request, "reports/view_scoring.html", {
+            "error": "Invalid date format.",
+            "month_list": month_list,
+            "reports": all_reports,
+        })
+
+    # Fetch all reports overlapping the requested range
+    reports_qs = ReportUpload.objects.filter(
+        start_date__lte=end_date,
+        end_date__gte=start_date
+    ).order_by("start_date", "end_date", "upload_date")
+
+    logger.info("view_scoring: requested range %s → %s", start_date_str, end_date_str)
+    logger.info("view_scoring: matched report IDs: %s", list(reports_qs.values_list("id", flat=True)))
+
+    if not reports_qs.exists():
+        return render(request, "reports/view_scoring.html", {
+            "error": f"No reports found for {start_date_str} → {end_date_str}",
+            "month_list": month_list,
+            "reports": all_reports,
+        })
+
+    # Group by exact (start_date, end_date). Each group may contain multiple uploaded files.
+    period_groups = {}
+    for r in reports_qs:
+        key = (r.start_date, r.end_date)
+        period_groups.setdefault(key, []).append(r)
+
+    logger.info("view_scoring: period groups found: %s", list(period_groups.keys()))
+
+    results = []
+
+    # columns to sum for "representative" selection
+    metric_cols = [
+        "P", "A", "L", "M", "S",
+        "RGI", "RGO", "RRI", "RRO",
+        "V", "one_to_one", "TYFCB", "CEU", "T"
+    ]
+
+    # Process each group (one report period)
+    for (start_period, end_period), report_group in period_groups.items():
+        report_ids = [r.id for r in report_group]
+        logger.info("Processing period %s → %s with reports: %s", start_period, end_period, report_ids)
+
+        # Get all MemberData rows related to these reports
+        member_rows = MemberData.objects.filter(report__in=report_group).select_related("member", "report")
+        logger.info("Found %d MemberData rows for this period group", member_rows.count())
+
+        # Map member.id -> list of MemberData rows
+        rows_by_member = {}
+        for md in member_rows:
+            rows_by_member.setdefault(md.member.id, []).append(md)
+
+        # Aggregate training counts across all TrainingData for this group
+        training_data_dict = defaultdict(int)
+        training_records = TrainingData.objects.filter(report__in=report_group).select_related("member", "report")
+        logger.info("Found %d TrainingData rows for this period group", training_records.count())
+        for t in training_records:
+            training_data_dict[t.member.id] += t.count
+
+        # For each member, select one representative MemberData row (the one with highest metric sum)
+        for member_id, md_list in rows_by_member.items():
+            member = md_list[0].member
+            if len(md_list) == 1:
+                chosen_md = md_list[0]
+                logger.debug("Member %s (%d) has single MemberData row from report %s",
+                             member.full_name, member.id, chosen_md.report.id)
+            else:
+                # compute metric sum for each row and choose the largest
+                best_row = None
+                best_sum = None
+                for md in md_list:
+                    s = 0
+                    for col in metric_cols:
+                        val = getattr(md, col, 0) or 0
+                        # TYFCB might be large; keep as-is
+                        # ensure numeric
+                        try:
+                            s += float(val)
+                        except Exception:
+                            pass
+                    if best_sum is None or s > best_sum:
+                        best_sum = s
+                        best_row = md
+                chosen_md = best_row
+                logger.debug(
+                    "Member %s (%d) had %d rows — chosen report %s (metric sum=%.1f)",
+                    member.full_name, member.id, len(md_list), chosen_md.report.id, best_sum
+                )
+
+            # Prepare values for scoring
+            total_weeks = chosen_md.report.total_weeks or 1
+            # Combine CEU on the chosen MemberData row plus aggregated training counts from training files
+            training_count = training_data_dict.get(member_id, 0)
+            total_training_value = (chosen_md.CEU or 0) + training_count
+
+            # Call unmodified scoring function
+            score_result = calculate_score_from_data(
+                member_data=chosen_md,
+                total_weeks=total_weeks,
+                training_count=total_training_value,
+            )
+
+            score_result["name"] = member.full_name or f"{member.first_name} {member.last_name}".strip()
+            score_result["report_period"] = f"{start_period} → {end_period}"
+            results.append(score_result)
+
+        logger.info("Completed processing period %s → %s; produced %d results",
+                    start_period, end_period, len(rows_by_member))
+
+    # Final sort & render
+    results.sort(key=lambda x: (-x.get("total_score", 0), x.get("name", "")))
+
+    return render(request, "reports/view_scoring.html", {
+        "results": results,
+        "month_list": month_list,
+        "start_date": start_date_str,
+        "end_date": end_date_str,
+        "reports": all_reports,
+    })
 
 
 from django.shortcuts import redirect, get_object_or_404
