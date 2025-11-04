@@ -331,122 +331,172 @@ def _get_month_list(all_reports):
     ]
 
 
+
 from django.shortcuts import render
-from datetime import datetime
-from .models import ReportingPeriod, MemberData, TrainingData
+from django.utils.dateparse import parse_date
+from django.db import transaction
+from collections import defaultdict
+import calendar
+from datetime import date
 import logging
+
+from .models import ReportUpload, MemberData, TrainingData
+from .utils import calculate_score_from_data  # ensure this import is valid
 
 logger = logging.getLogger(__name__)
 
 def view_scoring(request):
     """
-    View BNI member scoring for an exact reporting period (start_date, end_date).
-    Allows deletion of a report and its associated data.
+    View scoring data with monthly listing and delete option.
+    Works strictly on exact start_date and end_date matches.
     """
 
     # --- Handle delete request ---
     if request.method == "POST" and "delete_range" in request.POST:
+        start_str = request.POST.get("start_date")
+        end_str = request.POST.get("end_date")
+
         try:
-            start = datetime.strptime(request.POST["start_date"], "%Y-%m-%d").date()
-            end = datetime.strptime(request.POST["end_date"], "%Y-%m-%d").date()
-        except ValueError:
-            return render(request, "view_scoring.html", {"error": "Invalid date format"})
+            start = parse_date(start_str)
+            end = parse_date(end_str)
+            if not start or not end:
+                raise ValueError("Invalid date format")
 
-        deleted_reports = ReportingPeriod.objects.filter(start_date=start, end_date=end)
-        if deleted_reports.exists():
-            logger.info(f"Deleting reports for {start} → {end}")
-            deleted_reports.delete()
-            message = f"Deleted all records for period {start} → {end}"
-        else:
-            message = f"No report found for {start} → {end}"
+            with transaction.atomic():
+                deleted_count, _ = ReportUpload.objects.filter(
+                    start_date=start, end_date=end
+                ).delete()
 
-        reports = ReportingPeriod.objects.order_by("-end_date")
-        return render(request, "view_scoring.html", {"reports": reports, "message": message})
+            if deleted_count > 0:
+                message = f"✅ Deleted report for {start} → {end}"
+            else:
+                message = f"⚠️ No report found for {start} → {end}"
 
-    # --- Handle view request ---
-    start_date = request.GET.get("start_date")
-    end_date = request.GET.get("end_date")
+        except Exception as e:
+            logger.exception("Error deleting report")
+            message = f"❌ Error deleting report: {str(e)}"
 
-    # Always load existing report periods for dropdown or delete list
-    reports = ReportingPeriod.objects.order_by("-end_date")
-
-    if not (start_date and end_date):
-        return render(request, "view_scoring.html", {"reports": reports})
-
-    try:
-        start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
-        end_date = datetime.strptime(end_date, "%Y-%m-%d").date()
-    except ValueError:
-        return render(request, "view_scoring.html", {"error": "Invalid date format", "reports": reports})
-
-    logger.info(f"view_scoring: exact range {start_date} → {end_date}")
-
-    # --- Find exact match reporting period ---
-    report_qs = ReportingPeriod.objects.filter(start_date=start_date, end_date=end_date)
-    if not report_qs.exists():
-        logger.info(f"No report found for exact range {start_date} → {end_date}")
-        return render(
-            request,
-            "view_scoring.html",
-            {
-                "error": f"No data found for {start_date} → {end_date}",
-                "reports": reports,
-                "start_date": start_date,
-                "end_date": end_date,
-            },
-        )
-
-    report_ids = list(report_qs.values_list("id", flat=True))
-    logger.info(f"Matched exact report IDs: {report_ids}")
-
-    # --- Fetch related data ---
-    member_data = MemberData.objects.filter(report_id__in=report_ids)
-    training_data = TrainingData.objects.filter(report_id__in=report_ids)
-
-    logger.info(f"Fetched {member_data.count()} MemberData and {training_data.count()} TrainingData rows")
-
-    # --- Prepare results ---
-    results = []
-    for m in member_data:
-        # Match training data for the same member if available
-        t = training_data.filter(member_name__icontains=m.first_name).first()
-        training_score = t.training_score if t else 0
-
-        total_score = (
-            m.referrals_week_score +
-            m.visitors_week_score +
-            m.absenteeism_score +
-            training_score +
-            m.testimonials_week_score +
-            m.tyfcb_score +
-            m.arriving_on_time_score
-        )
-
-        results.append({
-            "name": f"{m.first_name} {m.last_name}",
-            "referrals_week_score": m.referrals_week_score,
-            "visitors_week_score": m.visitors_week_score,
-            "absenteeism_score": m.absenteeism_score,
-            "training_score": training_score,
-            "testimonials_week_score": m.testimonials_week_score,
-            "tyfcb_score": m.tyfcb_score,
-            "arriving_on_time_score": m.arriving_on_time_score,
-            "total_score": total_score,
+        all_reports = ReportUpload.objects.all().order_by("start_date")
+        month_list = _get_month_list(all_reports)
+        return render(request, "reports/view_scoring.html", {
+            "month_list": month_list,
+            "reports": all_reports,
+            "message": message,
         })
 
-    logger.info(f"Processed {len(results)} member scoring results for {start_date} → {end_date}")
+    # --- Regular GET ---
+    all_reports = ReportUpload.objects.all().order_by("start_date")
+    month_list = _get_month_list(all_reports)
 
-    return render(
-        request,
-        "view_scoring.html",
-        {
-            "start_date": start_date,
-            "end_date": end_date,
-            "results": results,
-            "reports": reports,
-        },
+    start_str = request.GET.get("start_date")
+    end_str = request.GET.get("end_date")
+
+    if not start_str or not end_str:
+        return render(request, "reports/view_scoring.html", {
+            "month_list": month_list,
+            "reports": all_reports,
+        })
+
+    start_date = parse_date(start_str)
+    end_date = parse_date(end_str)
+
+    if not start_date or not end_date:
+        return render(request, "reports/view_scoring.html", {
+            "error": "Invalid date format.",
+            "month_list": month_list,
+            "reports": all_reports,
+        })
+
+    logger.info(f"view_scoring: Exact match requested {start_date} → {end_date}")
+
+    # --- Fetch only reports exactly matching range ---
+    reports = ReportUpload.objects.filter(
+        start_date=start_date,
+        end_date=end_date
     )
 
+    if not reports.exists():
+        logger.info(f"view_scoring: No report found for exact match {start_date} → {end_date}")
+        return render(request, "reports/view_scoring.html", {
+            "error": f"No report found for exact range {start_date} → {end_date}",
+            "month_list": month_list,
+            "reports": all_reports,
+        })
+
+    logger.info(f"view_scoring: Found {reports.count()} reports matching exact range")
+
+    all_member_data = MemberData.objects.filter(report__in=reports).select_related("member", "report")
+    training_data_dict = defaultdict(int)
+
+    # Collect training counts for this range
+    training_records = TrainingData.objects.filter(
+        report__in=reports,
+        start_date=start_date,
+        end_date=end_date
+    ).select_related("member", "report")
+
+    logger.info(f"view_scoring: Found {training_records.count()} training rows")
+
+    for t in training_records:
+        training_data_dict[t.member.id] += t.count
+
+    results = []
+    seen = set()
+
+    for md in all_member_data:
+        key = (md.member_id, md.report.start_date, md.report.end_date)
+        if key in seen:
+            continue
+        seen.add(key)
+
+        member = md.member
+        member_name = member.full_name or f"{member.first_name} {member.last_name}".strip()
+        total_weeks = md.report.total_weeks or 1
+
+        training_count = training_data_dict.get(md.member_id, 0)
+        total_training_value = md.CEU + training_count
+
+        score = calculate_score_from_data(
+            member_data=md,
+            total_weeks=total_weeks,
+            training_count=total_training_value,
+        )
+
+        score["name"] = member_name
+        score["report_period"] = f"{md.report.start_date} → {md.report.end_date}"
+        results.append(score)
+
+    results.sort(key=lambda x: (-x.get("total_score", 0), x["name"]))
+
+    logger.info(f"view_scoring: Completed {len(results)} scored results for {start_date} → {end_date}")
+
+    return render(request, "reports/view_scoring.html", {
+        "results": results,
+        "month_list": month_list,
+        "reports": all_reports,
+        "start_date": start_str,
+        "end_date": end_str,
+    })
+
+
+def _get_month_list(all_reports):
+    """Build a list of available (year, month) for sidebar listing."""
+    months = []
+    seen = set()
+    for r in all_reports:
+        if not r.start_date:
+            continue
+        key = (r.start_date.year, r.start_date.month)
+        if key not in seen:
+            seen.add(key)
+            months.append({
+                "year": r.start_date.year,
+                "month": r.start_date.month,
+                "label": f"{calendar.month_name[r.start_date.month]} {r.start_date.year}",
+                "start": date(r.start_date.year, r.start_date.month, 1).isoformat(),
+                "end": date(r.start_date.year, r.start_date.month, calendar.monthrange(r.start_date.year, r.start_date.month)[1]).isoformat(),
+            })
+    return sorted(months, key=lambda x: (x["year"], x["month"]))
 
 from django.shortcuts import redirect, get_object_or_404
 from django.contrib import messages
