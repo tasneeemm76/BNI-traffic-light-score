@@ -544,7 +544,6 @@ def _color_by_absolute(score: int, max_score: int) -> str:
     else:
         return "#808080"  # Gray
 
-
 def score_summary(request):
     """Display a color-coded score heatmap: Member × Month."""
     reports = (
@@ -585,9 +584,16 @@ def score_summary(request):
     # find highest score for color scale
     max_score = max((v for m in raw_scores.values() for v in m.values()), default=100)
 
+    # Sort members by total accumulated score (descending)
+    sorted_members = sorted(
+        member_names,
+        key=lambda m: sum(raw_scores.get(m, {}).values()),
+        reverse=True
+    )
+
     # prepare final table data (color + score for each cell)
     table_data = []
-    for member in sorted(member_names):
+    for member in sorted_members:
         row = {"member": member, "scores": []}
         for month in months:
             score = raw_scores.get(member, {}).get(month)
