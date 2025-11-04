@@ -341,7 +341,6 @@ from datetime import date
 import logging
 
 from .models import ReportUpload, MemberData, TrainingData
-from .utils import calculate_score_from_data  # ensure this import is valid
 
 logger = logging.getLogger(__name__)
 
