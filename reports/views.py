@@ -547,9 +547,8 @@ def _color_by_absolute(score: int, max_score: int) -> str:
 def is_ignored_member(member_name: str) -> bool:
     if not member_name:
         return False
-    ignored_names = {"Visitors", "BNI", "Total"}
+    ignored_names = {"total", "bni", "visitors"}
     return member_name.strip().lower() in ignored_names
-
 
 def score_summary(request):
     """Display a color-coded score heatmap: Member × Month."""
