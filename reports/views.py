@@ -528,7 +528,6 @@ logger = logging.getLogger(__name__)
 from collections import defaultdict
 from django.shortcuts import render
 from .models import ReportUpload, MemberData, TrainingData
-from .your_score_module import calculate_score_from_data  # update as needed
 
 
 def _color_by_absolute(score: int, max_score: int) -> str:
