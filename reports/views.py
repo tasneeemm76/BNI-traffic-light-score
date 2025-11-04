@@ -525,73 +525,83 @@ import logging
 from .models import ReportUpload, MemberData, TrainingData
 
 logger = logging.getLogger(__name__)
+from collections import defaultdict
+from django.shortcuts import render
+from .models import ReportUpload, MemberData, TrainingData
+from .your_score_module import calculate_score_from_data  # update as needed
+
+
+def _color_by_absolute(score: int, max_score: int) -> str:
+    """Map per-metric score to a color using percentage bands."""
+    if max_score <= 0:
+        return "#d3d3d3"
+    percent = (score / max_score) * 100.0
+    if percent >= 70:
+        return "#008000"  # Green
+    elif percent >= 50:
+        return "#FFBF00"  # Yellow
+    elif percent >= 30:
+        return "#ff0000"  # Red
+    else:
+        return "#808080"  # Gray
 
 
 def score_summary(request):
-    """
-    Show all available months with each member's total score per month.
-    - Automatically groups reports by month (start_date)
-    - Combines CEU + TrainingData.count
-    - Displays only final total_score (member_name + total_score + period)
-    """
-
-    # Fetch all reports (with related data for efficiency)
+    """Display a color-coded score heatmap: Member × Month."""
     reports = (
         ReportUpload.objects
-        .prefetch_related(
-            Prefetch('member_data', queryset=MemberData.objects.select_related('member')),
-            Prefetch('training_data', queryset=TrainingData.objects.select_related('member')),
-        )
-        .order_by('start_date')
+        .prefetch_related("member_data", "training_data")
+        .order_by("start_date")
     )
 
     if not reports.exists():
         return render(request, "reports/score_summary.html", {"error": "No reports found."})
 
-    # Data structure: month_label → list of {member, score, period}
-    month_summary = defaultdict(list)
+    # Unique months in chronological order
+    months = []
+    member_names = set()
+    raw_scores = defaultdict(dict)
 
     for report in reports:
-        month_label = report.start_date.strftime("%B %Y")
-        total_weeks = report.total_weeks or 1.0
+        month_label = report.start_date.strftime("%b %y")
+        if month_label not in months:
+            months.append(month_label)
 
-        # Build training lookup for this report
-        training_lookup = {
-            t.member_id: (t.count or 0) for t in report.training_data.all()
-        }
+        training_lookup = {t.member_id: (t.count or 0) for t in report.training_data.all()}
 
         for md in report.member_data.all():
-            training_count = training_lookup.get(md.member_id, 0)
-            total_training_value = (md.CEU or 0) + training_count
+            member_name = md.member.full_name or f"{md.member.first_name} {md.member.last_name}".strip()
+            member_names.add(member_name)
 
-            # Calculate total score using your logic
-            score_info = calculate_score_from_data(
+            total_training = (md.CEU or 0) + training_lookup.get(md.member_id, 0)
+            score_data = calculate_score_from_data(
                 member_data=md,
-                total_weeks=total_weeks,
-                training_count=total_training_value,
+                total_weeks=report.total_weeks or 1.0,
+                training_count=total_training,
             )
 
-            member_name = md.member.full_name or f"{md.member.first_name} {md.member.last_name}".strip()
-            total_score = int(score_info.get("total_score", 0))
+            total_score = int(score_data.get("total_score", 0))
+            raw_scores[member_name][month_label] = total_score
 
-            month_summary[month_label].append({
-                "name": member_name,
-                "total_score": total_score,
-                "report_period": f"{report.start_date} → {report.end_date}"
-            })
+    # find highest score for color scale
+    max_score = max((v for m in raw_scores.values() for v in m.values()), default=100)
 
-    # Sort members within each month (descending by score)
-    for month_label, member_list in month_summary.items():
-        member_list.sort(key=lambda x: (-x["total_score"], x["name"]))
-
-    # Sort months chronologically
-    sorted_results = sorted(
-        month_summary.items(),
-        key=lambda x: datetime.strptime(x[0], "%B %Y")
-    )
-
-    logger.info(f"score_summary: Generated summary for {len(sorted_results)} months")
+    # prepare final table data (color + score for each cell)
+    table_data = []
+    for member in sorted(member_names):
+        row = {"member": member, "scores": []}
+        for month in months:
+            score = raw_scores.get(member, {}).get(month)
+            if score is None:
+                row["scores"].append({"value": "-", "color": "#f0f0f0"})
+            else:
+                row["scores"].append({
+                    "value": score,
+                    "color": _color_by_absolute(score, max_score)
+                })
+        table_data.append(row)
 
     return render(request, "reports/score_summary.html", {
-        "results": sorted_results,  # list of (month_label, member_scores)
+        "months": months,
+        "table_data": table_data,
     })
