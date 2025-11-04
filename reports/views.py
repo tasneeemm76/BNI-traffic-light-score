@@ -521,70 +521,76 @@ def delete_report(request, start, end):
 
 
 
-
 from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.db.models import Count
+from calendar import month_name
 
 def score_summary(request):
     """
-    Displays all unique reporting periods with score summaries and delete options.
-    Strictly filters data by exact start_date and end_date.
+    Displays a monthly summary of total scores, with delete option for each month.
+    Filters strictly by exact start_date and end_date.
     """
     # --- Handle delete action ---
     if request.method == "POST":
         start_date = request.POST.get("start_date")
         end_date = request.POST.get("end_date")
-
         if start_date and end_date:
             deleted, _ = MemberData.objects.filter(
-                start_date=start_date,
-                end_date=end_date
+                start_date=start_date, end_date=end_date
             ).delete()
-
-            messages.success(request, f"Deleted {deleted} records for {start_date} → {end_date}.")
+            messages.success(request, f"Deleted {deleted} records for {start_date} → {end_date}")
             return redirect("score_summary")
 
-    # --- Get unique reporting periods ---
+    # --- Get all unique reporting periods ---
     periods = (
         MemberData.objects.values("start_date", "end_date")
         .annotate(count=Count("id"))
-        .order_by("-start_date")
+        .order_by("start_date")
     )
 
-    summary_data = []
-    for period in periods:
-        start_date = period["start_date"]
-        end_date = period["end_date"]
+    monthly_scores = []  # For summary table
+    detailed_data = []   # For detailed per-member display (if needed)
 
-        # Debug info
-        print(f"🔍 Processing period: {start_date} to {end_date}")
+    for p in periods:
+        start_date = p["start_date"]
+        end_date = p["end_date"]
+        month_label = f"{month_name[start_date.month]} {start_date.year}"
 
         members = MemberData.objects.filter(
-            start_date=start_date,
-            end_date=end_date
+            start_date=start_date, end_date=end_date
         ).select_related("member")
 
         if not members.exists():
-            print(f"⚠️ No records found for {start_date} → {end_date}")
             continue
 
         total_weeks = max(1, ((end_date - start_date).days / 7))
         rows = []
+        total_score = 0
 
         for m in members:
             score_info = calculate_score_from_data(m, total_weeks)
+            total_score += score_info["total_score"]
             rows.append(score_info)
 
-        avg_score = round(sum(r["total_score"] for r in rows) / len(rows), 2)
-        summary_data.append({
+        avg_score = round(total_score / len(rows), 2)
+        monthly_scores.append({
+            "month": month_label,
             "start_date": start_date,
             "end_date": end_date,
-            "member_count": len(rows),
+            "total_score": total_score,
             "avg_score": avg_score,
+            "member_count": len(rows),
+        })
+
+        detailed_data.append({
+            "month": month_label,
+            "start_date": start_date,
+            "end_date": end_date,
             "rows": rows,
         })
 
-        print(f"✅ Period {start_date} → {end_date} | {len(rows)} members | Avg score: {avg_score}")
-
-    return render(request, "score_summary.html", {"summary_data": summary_data})
+    return render(request, "score_summary.html", {
+        "monthly_scores": monthly_scores,
+        "detailed_data": detailed_data,
+    })

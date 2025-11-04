@@ -1,67 +1,80 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>BNI Score Summary</title>
+    <title>BNI Monthly Score Summary</title>
     <style>
-        body { font-family: Arial; margin: 40px; }
+        body { font-family: Arial, sans-serif; margin: 40px; }
         table { border-collapse: collapse; width: 100%; margin-bottom: 40px; }
-        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
         th { background: #f2f2f2; }
         .delete-btn {
             background: #e74c3c;
             color: white;
             border: none;
-            padding: 6px 10px;
+            padding: 5px 8px;
             border-radius: 4px;
             cursor: pointer;
-        }
-        .chip {
-            border-radius: 4px;
-            color: white;
-            padding: 4px 8px;
-            font-weight: bold;
         }
     </style>
 </head>
 <body>
-<h1>Score Summary by Period</h1>
+<h1>BNI Monthly Score Summary</h1>
 
-{% for period in summary_data %}
-    <h2>{{ period.start_date }} → {{ period.end_date }}</h2>
-    <form method="post" style="margin-bottom:10px;">
-        {% csrf_token %}
-        <input type="hidden" name="start_date" value="{{ period.start_date }}">
-        <input type="hidden" name="end_date" value="{{ period.end_date }}">
-        <button type="submit" class="delete-btn">Delete this month</button>
-    </form>
+<!-- === Month-wise Total Summary Table === -->
+<table>
+    <tr>
+        <th>Month</th>
+        <th>Total Score</th>
+        <th>Average Score</th>
+        <th>Members</th>
+        <th>Action</th>
+    </tr>
+    {% for m in monthly_scores %}
+    <tr>
+        <td>{{ m.month }}</td>
+        <td>{{ m.total_score }}</td>
+        <td>{{ m.avg_score }}</td>
+        <td>{{ m.member_count }}</td>
+        <td>
+            <form method="post" style="display:inline;">
+                {% csrf_token %}
+                <input type="hidden" name="start_date" value="{{ m.start_date }}">
+                <input type="hidden" name="end_date" value="{{ m.end_date }}">
+                <button type="submit" class="delete-btn">Delete</button>
+            </form>
+        </td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="5">No records found.</td></tr>
+    {% endfor %}
+</table>
 
-    <p><strong>Members:</strong> {{ period.member_count }} |
-       <strong>Average Score:</strong> {{ period.avg_score }}</p>
-
-    <table>
-        <tr>
-            <th>Name</th>
-            <th>Total Score</th>
-            <th>Arriving on Time</th>
-            <th>Visitors</th>
-            <th>Referrals</th>
-            <th>Training</th>
-            <th>TYFCB</th>
-        </tr>
-        {% for row in period.rows %}
-        <tr>
-            <td>{{ row.name }}</td>
-            <td style="background:{{ row.color }};color:white;">{{ row.total_score }}</td>
-            <td><span class="chip" style="background:{{ row.arrival_color }};">{{ row.arriving_on_time_score }}</span></td>
-            <td><span class="chip" style="background:{{ row.visitors_week_color }};">{{ row.visitors_week_score }}</span></td>
-            <td><span class="chip" style="background:{{ row.referrals_week_color }};">{{ row.referrals_week_score }}</span></td>
-            <td><span class="chip" style="background:{{ row.training_color }};">{{ row.training_score }}</span></td>
-            <td><span class="chip" style="background:{{ row.tyfcb_color }};">{{ row.tyfcb_score }}</span></td>
-        </tr>
-        {% endfor %}
-    </table>
-{% empty %}
-    <p>No score data available.</p>
+<!-- === Optional: Detailed Breakdown per Month === -->
+{% for period in detailed_data %}
+<h2>{{ period.month }}</h2>
+<table>
+    <tr>
+        <th>Name</th>
+        <th>Total Score</th>
+        <th>Referrals</th>
+        <th>Visitors</th>
+        <th>Training</th>
+        <th>TYFCB</th>
+        <th>Arriving on Time</th>
+    </tr>
+    {% for row in period.rows %}
+    <tr>
+        <td>{{ row.name }}</td>
+        <td style="background:{{ row.color }};color:white;">{{ row.total_score }}</td>
+        <td style="background:{{ row.referrals_week_color }};color:white;">{{ row.referrals_week_score }}</td>
+        <td style="background:{{ row.visitors_week_color }};color:white;">{{ row.visitors_week_score }}</td>
+        <td style="background:{{ row.training_color }};color:white;">{{ row.training_score }}</td>
+        <td style="background:{{ row.tyfcb_color }};color:white;">{{ row.tyfcb_score }}</td>
+        <td style="background:{{ row.arrival_color }};color:white;">{{ row.arriving_on_time_score }}</td>
+    </tr>
+    {% endfor %}
+</table>
 {% endfor %}
+
 </body>
 </html>
