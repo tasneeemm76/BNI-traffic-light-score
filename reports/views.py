@@ -496,9 +496,8 @@ def _get_month_list(all_reports):
             })
     return sorted(months, key=lambda x: (x["year"], x["month"]))
 
-from django.shortcuts import redirect, get_object_or_404
+from django.shortcuts import redirect
 from django.contrib import messages
-from .models import ReportUpload
 
 def delete_report(request, start, end):
     """Deletes all records belonging to a report with matching start and end dates."""
@@ -515,20 +514,6 @@ def delete_report(request, start, end):
         messages.error(request, f"⚠️ Error deleting report: {e}")
     
     return redirect('view_scoring')
-
-from collections import defaultdict
-from django.shortcuts import render
-from django.db.models import Prefetch
-from datetime import datetime
-import logging
-
-from .models import ReportUpload, MemberData, TrainingData
-
-logger = logging.getLogger(__name__)
-from collections import defaultdict
-from django.shortcuts import render
-from .models import ReportUpload, MemberData, TrainingData
-
 
 def _color_by_absolute(score: int, max_score: int) -> str:
     """Map per-metric score to a color using percentage bands."""
@@ -551,21 +536,16 @@ def is_ignored_member(member_name: str) -> bool:
     return member_name.strip().lower() in ignored_names
 
 
-import traceback
-
 def score_summary(request):
     """Display a color-coded score heatmap: Member × Month."""
-    print("===> Entering score_summary view")
     try:
         reports = (
             ReportUpload.objects
             .prefetch_related("member_data", "training_data")
             .order_by("start_date")
         )
-        print(f"===> Total reports found: {reports.count()}")
 
         if not reports.exists():
-            print("===> No reports found.")
             return render(request, "reports/score_summary.html", {"error": "No reports found."})
 
         months = []
@@ -576,24 +556,19 @@ def score_summary(request):
             month_label = report.start_date.strftime("%b %y")
             if month_label not in months:
                 months.append(month_label)
-            print(f"===> Processing report for month: {month_label}")
 
             training_lookup = {t.member_id: (t.count or 0) for t in report.training_data.all()}
-            print(f"===> Training lookup for report: {training_lookup}")
 
             for md in report.member_data.all():
                 member_name = md.member.full_name or f"{md.member.first_name} {md.member.last_name}".strip()
-                print(f"===> Evaluating member: {member_name}")
 
                 # Skip ignored members
                 if is_ignored_member(member_name):
-                    print(f"===> Ignored member: {member_name}")
                     continue
 
                 member_names.add(member_name)
 
                 total_training = (md.CEU or 0) + training_lookup.get(md.member_id, 0)
-                print(f"===> Total training for {member_name}: {total_training}")
 
                 try:
                     score_data = calculate_score_from_data(
@@ -601,28 +576,19 @@ def score_summary(request):
                         total_weeks=report.total_weeks or 1.0,
                         training_count=total_training,
                     )
-                    print(f"===> Score data for {member_name}: {score_data}")
-                except Exception as e:
-                    print(f"===> ERROR calculating score for {member_name}: {e}")
-                    print(traceback.format_exc())
+                except Exception:
                     continue
 
                 total_score = int(score_data.get("total_score", 0))
                 raw_scores[member_name][month_label] = total_score
 
-        print(f"===> Months: {months}")
-        print(f"===> Member names: {member_names}")
-        print(f"===> Raw scores (partial): {dict(list(raw_scores.items())[:2])}")
-
         max_score = max((v for m in raw_scores.values() for v in m.values()), default=100)
-        print(f"===> Max score value: {max_score}")
 
         sorted_members = sorted(
             member_names,
             key=lambda m: sum(raw_scores.get(m, {}).values()),
             reverse=True
         )
-        print(f"===> Sorted member names (partial): {list(sorted_members)[:5]}")
 
         table_data = []
         for member in sorted_members:
@@ -637,15 +603,11 @@ def score_summary(request):
                         "color": _color_by_absolute(score, max_score)
                     })
             table_data.append(row)
-        print(f"===> Table data row count: {len(table_data)}")
-        if table_data:
-            print(f"===> First row: {table_data[0]}")
 
         return render(request, "reports/score_summary.html", {
             "months": months,
             "table_data": table_data,
         })
+
     except Exception as e:
-        print("===> FATAL ERROR in score_summary view:", str(e))
-        print(traceback.format_exc())
         return render(request, "reports/score_summary.html", {"error": f"Server error: {e}"})

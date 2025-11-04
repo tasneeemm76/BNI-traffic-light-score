@@ -64,10 +64,34 @@
             height: 20px;
             border: 1px solid #aaa;
         }
+        .header-bar {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 40px; /* spacing between boxes */
+    margin: 20px 0;
+}
+
+.header-box {
+    background-color: #b30000; /* red background */
+    color: white;
+    padding: 8px 20px;
+    font-family: Arial, sans-serif;
+    font-weight: bold;
+    font-size: 16px;
+    border-radius: 2px;
+    text-align: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
     </style>
 </head>
 <body>
-    <h1>PATRONS</h1>
+   <div class="header-bar">
+    <div class="header-box">Region: Delhi Central</div>
+    <div class="header-box">PATRONS</div>
+    <div class="header-box">September 2025</div>
+</div>
 
     {% if error %}
         <p style="text-align:center; color:red;">{{ error }}</p>
