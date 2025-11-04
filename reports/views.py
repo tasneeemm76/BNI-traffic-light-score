@@ -519,78 +519,114 @@ def delete_report(request, start, end):
 
 
 
-
-
+import logging
 from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.db.models import Count
 from calendar import month_name
+from .models import MemberData
+from .views import calculate_score_from_data  # if it's in the same file, remove this import
+
+logger = logging.getLogger(__name__)
 
 def score_summary(request):
     """
-    Displays a monthly summary of total scores, with delete option for each month.
-    Filters strictly by exact start_date and end_date.
+    Displays a monthly summary of total scores.
+    Debug mode enabled to trace internal flow.
     """
-    # --- Handle delete action ---
-    if request.method == "POST":
-        start_date = request.POST.get("start_date")
-        end_date = request.POST.get("end_date")
-        if start_date and end_date:
-            deleted, _ = MemberData.objects.filter(
-                start_date=start_date, end_date=end_date
-            ).delete()
-            messages.success(request, f"Deleted {deleted} records for {start_date} → {end_date}")
-            return redirect("score_summary")
+    try:
+        logger.info("Starting score_summary view...")
 
-    # --- Get all unique reporting periods ---
-    periods = (
-        MemberData.objects.values("start_date", "end_date")
-        .annotate(count=Count("id"))
-        .order_by("start_date")
-    )
+        # --- Handle delete action ---
+        if request.method == "POST":
+            start_date = request.POST.get("start_date")
+            end_date = request.POST.get("end_date")
+            logger.debug(f"POST delete request for {start_date} → {end_date}")
+            if start_date and end_date:
+                deleted, _ = MemberData.objects.filter(
+                    start_date=start_date, end_date=end_date
+                ).delete()
+                messages.success(request, f"Deleted {deleted} records for {start_date} → {end_date}")
+                return redirect("score_summary")
 
-    monthly_scores = []  # For summary table
-    detailed_data = []   # For detailed per-member display (if needed)
+        # --- Get all unique periods ---
+        periods = (
+            MemberData.objects.values("start_date", "end_date")
+            .annotate(count=Count("id"))
+            .order_by("start_date")
+        )
 
-    for p in periods:
-        start_date = p["start_date"]
-        end_date = p["end_date"]
-        month_label = f"{month_name[start_date.month]} {start_date.year}"
+        if not periods.exists():
+            logger.warning("No MemberData found. Returning empty page.")
+            return render(request, "score_summary.html", {
+                "monthly_scores": [],
+                "detailed_data": [],
+            })
 
-        members = MemberData.objects.filter(
-            start_date=start_date, end_date=end_date
-        ).select_related("member")
+        monthly_scores = []
+        detailed_data = []
 
-        if not members.exists():
-            continue
+        for p in periods:
+            start_date = p["start_date"]
+            end_date = p["end_date"]
+            if not start_date or not end_date:
+                logger.warning(f"Skipping invalid record: {p}")
+                continue
 
-        total_weeks = max(1, ((end_date - start_date).days / 7))
-        rows = []
-        total_score = 0
+            month_label = f"{month_name[start_date.month]} {start_date.year}"
+            logger.info(f"Processing {month_label} ({start_date} → {end_date})")
 
-        for m in members:
-            score_info = calculate_score_from_data(m, total_weeks)
-            total_score += score_info["total_score"]
-            rows.append(score_info)
+            members = MemberData.objects.filter(
+                report__start_date=start_date, report__end_date=end_date
+            ).select_related("member", "report")
 
-        avg_score = round(total_score / len(rows), 2)
-        monthly_scores.append({
-            "month": month_label,
-            "start_date": start_date,
-            "end_date": end_date,
-            "total_score": total_score,
-            "avg_score": avg_score,
-            "member_count": len(rows),
+            if not members.exists():
+                logger.info(f"No data for {month_label}")
+                continue
+
+            total_weeks = max(1, ((end_date - start_date).days / 7))
+            logger.debug(f"Total weeks for {month_label}: {total_weeks}")
+
+            total_score = 0
+            rows = []
+
+            for m in members:
+                try:
+                    score_info = calculate_score_from_data(m, total_weeks)
+                    total_score += score_info["total_score"]
+                    rows.append(score_info)
+                except Exception as e:
+                    logger.exception(f"Error calculating score for {m.member.full_name}: {e}")
+
+            if not rows:
+                logger.warning(f"No rows for {month_label}")
+                continue
+
+            avg_score = round(total_score / len(rows), 2)
+            monthly_scores.append({
+                "month": month_label,
+                "start_date": start_date,
+                "end_date": end_date,
+                "total_score": total_score,
+                "avg_score": avg_score,
+                "member_count": len(rows),
+            })
+            detailed_data.append({
+                "month": month_label,
+                "rows": rows,
+            })
+
+        logger.info(f"Final months processed: {len(monthly_scores)}")
+
+        return render(request, "score_summary.html", {
+            "monthly_scores": monthly_scores,
+            "detailed_data": detailed_data,
         })
 
-        detailed_data.append({
-            "month": month_label,
-            "start_date": start_date,
-            "end_date": end_date,
-            "rows": rows,
+    except Exception as e:
+        logger.exception("Unexpected error in score_summary view:")
+        return render(request, "score_summary.html", {
+            "error": str(e),
+            "monthly_scores": [],
+            "detailed_data": [],
         })
-
-    return render(request, "score_summary.html", {
-        "monthly_scores": monthly_scores,
-        "detailed_data": detailed_data,
-    })
