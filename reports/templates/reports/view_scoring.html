@@ -136,26 +136,27 @@
         </div>
     {% endif %}
 
-
- {% for report in reports %}
-    <tr>
-        <td>{{ report.start_date }}</td>
-        <td>{{ report.end_date }}</td>
-    </tr>
-    <td>
-    <form method="post" style="display:inline;">
-        {% csrf_token %}
-        <input type="hidden" name="delete_range" value="1">
-<input type="hidden" name="start_date" value="{{ report.start_date|date:'Y-m-d' }}">
-<input type="hidden" name="end_date" value="{{ report.end_date|date:'Y-m-d' }}">
-
-        <button type="submit" class="btn btn-danger" onclick="return confirm('Delete report from {{ report.start_date }} → {{ report.end_date }}?')">
-            🗑 Delete
-        </button>
-    </form>
-</td>
-
-{% endfor %}
+{% for report in reports %}
+        <tr>
+            <td>
+                <a class="view-link" href="/view-scoring/?start_date={{ report.start_date|date:'Y-m-d' }}&end_date={{ report.end_date|date:'Y-m-d' }}">
+                    {{ report.start_date }}
+                </a>
+            </td>
+            <td>{{ report.end_date }}</td>
+            <td>
+                <form method="post" style="display:inline;">
+                    {% csrf_token %}
+                    <input type="hidden" name="delete_range" value="1">
+                    <input type="hidden" name="start_date" value="{{ report.start_date|date:'Y-m-d' }}">
+                    <input type="hidden" name="end_date" value="{{ report.end_date|date:'Y-m-d' }}">
+                    <button type="submit" class="btn-danger" onclick="return confirm('Delete report from {{ report.start_date }} → {{ report.end_date }}?')">
+                        🗑 Delete
+                    </button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
 
 
 
