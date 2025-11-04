@@ -306,7 +306,6 @@ import calendar
 from datetime import date
 from django.shortcuts import render
 from .models import ReportUpload, MemberData, TrainingData
-from .scoring import calculate_score_from_data  # adjust import if needed
 
 
 def view_scoring(request: HttpRequest) -> HttpResponse:
