@@ -303,7 +303,12 @@ from django.db.models import Q
 from django.db import transaction
 from collections import defaultdict
 import calendar
-from datetime import date, datetime
+from datetime import date
+from django.shortcuts import render
+from .models import ReportUpload, MemberData, TrainingData
+from .scoring import calculate_score_from_data  # adjust import if needed
+
+
 def view_scoring(request: HttpRequest) -> HttpResponse:
     """
     View scoring data with monthly listing and delete option.
@@ -360,12 +365,21 @@ def view_scoring(request: HttpRequest) -> HttpResponse:
                 "reports": all_reports,
             })
 
-        reports = ReportUpload.objects.filter(
+        # ✅ Group reports by unique (start_date, end_date)
+        all_reports_for_period = ReportUpload.objects.filter(
             start_date__lte=end_date,
             end_date__gte=start_date
-        ).distinct()
+        ).order_by("start_date", "end_date")
 
-        if not reports.exists():
+        # Deduplicate reports (in case both PALM and Training uploaded)
+        unique_ranges = {}
+        for r in all_reports_for_period:
+            key = (r.start_date, r.end_date)
+            if key not in unique_ranges:
+                unique_ranges[key] = r
+        reports = list(unique_ranges.values())
+
+        if not reports:
             return render(request, "reports/view_scoring.html", {
                 "error": f"No reports found for {start_date_str} → {end_date_str}",
                 "month_list": month_list,
@@ -373,24 +387,24 @@ def view_scoring(request: HttpRequest) -> HttpResponse:
             })
 
         all_member_data = MemberData.objects.filter(report__in=reports).select_related("member", "report")
-        training_data_dict = defaultdict(int)
 
-        for t in TrainingData.objects.filter(report__in=reports).select_related("member", "report"):
+        # Aggregate training data from all matching reports
+        training_data_dict = defaultdict(int)
+        for t in TrainingData.objects.filter(report__in=all_reports_for_period).select_related("member", "report"):
             training_data_dict[t.member.id] += t.count
 
         results = []
-        seen_members = set()  # Track members already processed for this report period
+        seen_members = set()  # track processed (member, report_period)
 
         for member_data in all_member_data:
             member = member_data.member
             member_name = member.full_name or f"{member.first_name} {member.last_name}".strip()
             total_weeks = member_data.report.total_weeks or 1
 
-            # ✅ Unique key based on member + report date range
-            unique_key = (member.id, member_data.report.start_date, member_data.report.end_date)
-            if unique_key in seen_members:
-                continue  # Skip duplicate entries (from multiple uploads)
-            seen_members.add(unique_key)
+            key = (member.id, member_data.report.start_date, member_data.report.end_date)
+            if key in seen_members:
+                continue  # skip duplicates
+            seen_members.add(key)
 
             training_count = training_data_dict.get(member.id, 0)
             total_training_value = member_data.CEU + training_count
@@ -405,6 +419,7 @@ def view_scoring(request: HttpRequest) -> HttpResponse:
             score_result["report_period"] = f"{member_data.report.start_date} → {member_data.report.end_date}"
             results.append(score_result)
 
+        # Sort by total score desc, then name asc
         results.sort(key=lambda x: (-x.get("total_score", 0), x["name"]))
 
         return render(request, "reports/view_scoring.html", {
@@ -415,12 +430,14 @@ def view_scoring(request: HttpRequest) -> HttpResponse:
             "reports": all_reports,
         })
 
+    # --- Default render ---
     return render(request, "reports/view_scoring.html", {
         "month_list": month_list,
         "reports": all_reports,
     })
 
-# --- helper function ---
+
+# --- Helper function ---
 def _get_month_list(all_reports):
     """Generate a sorted list of available months."""
     month_list = []
