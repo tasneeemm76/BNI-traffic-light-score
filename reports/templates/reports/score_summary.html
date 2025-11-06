@@ -126,5 +126,49 @@
             <div class="legend-item"><div class="box" style="background:#808080"></div> &lt;30%</div>
         </div>
     {% endif %}
+
+    <h2 style="margin-top:50px; text-align:center;">Member-Wise Analysis</h2>
+
+{% for member, records in member_analysis.items %}
+    <h3 style="margin-top:30px;">{{ member }}</h3>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Period</th>
+                <th>Absent<br>(15)</th>
+                <th>Referrals<br>(20)</th>
+                <th>TYFCB<br>(15)</th>
+                <th>Visitors<br>(20)</th>
+                <th>Testimonial<br>(10)</th>
+                <th>On Time<br>(5)</th>
+                <th>Training<br>(15)</th>
+                <th>Total</th>
+            </tr>
+        </thead>
+
+        <tbody>
+            {% for row in records %}
+            <tr>
+                <td><b>{{ row.period }}</b></td>
+
+                <td style="background: {{ _color_by_absolute(row.absent, 15) }}; color:white;">{{ row.absent }}</td>
+                <td style="background: {{ _color_by_absolute(row.referrals, 20) }}; color:white;">{{ row.referrals }}</td>
+                <td style="background: {{ _color_by_absolute(row.tyfcb, 15) }}; color:white;">{{ row.tyfcb }}</td>
+                <td style="background: {{ _color_by_absolute(row.visitors, 20) }}; color:white;">{{ row.visitors }}</td>
+                <td style="background: {{ _color_by_absolute(row.testimonials, 10) }}; color:white;">{{ row.testimonials }}</td>
+                <td style="background: {{ _color_by_absolute(row.on_time, 5) }}; color:white;">{{ row.on_time }}</td>
+                <td style="background: {{ _color_by_absolute(row.training, 15) }}; color:white;">{{ row.training }}</td>
+
+                <td style="background: {{ _color_by_absolute(row.total, 100) }}; color:white;">
+                    <b>{{ row.total }}</b>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+{% endfor %}
+
 </body>
 </html>

@@ -604,10 +604,52 @@ def score_summary(request):
                     })
             table_data.append(row)
 
+        # ------------------------------------------
+# MEMBER-WISE ANALYSIS SECTION
+# ------------------------------------------
+
+        member_analysis = defaultdict(list)
+
+        for report in reports:
+            month_label = report.end_date.strftime("%b %y")
+            training_lookup = {t.member_id: (t.count or 0) for t in report.training_data.all()}
+
+            for md in report.member_data.all():
+                member_name = md.member.full_name or f"{md.member.first_name} {md.member.last_name}".strip()
+
+                if is_ignored_member(member_name):
+                    continue
+
+                total_training = (md.CEU or 0) + training_lookup.get(md.member_id, 0)
+
+                try:
+                    score_data = calculate_score_from_data(
+                        member_data=md,
+                        total_weeks=report.total_weeks or 1.0,
+                        training_count=total_training
+                    )
+                except Exception:
+                    continue
+
+                member_analysis[member_name].append({
+                    "period": month_label,
+                    "absent": score_data["absenteeism_score"],
+                    "referrals": score_data["referrals_week_score"],
+                    "tyfcb": score_data["tyfcb_score"],
+                    "visitors": score_data["visitors_week_score"],
+                    "testimonials": score_data["testimonials_week_score"],
+                    "on_time": score_data["arriving_on_time_score"],
+                    "training": score_data["training_score"],
+                    "total": score_data["total_score"],
+                })
+
+
         return render(request, "reports/score_summary.html", {
             "months": months,
             "table_data": table_data,
+            "member_analysis": member_analysis,
         })
+
 
     except Exception as e:
         return render(request, "reports/score_summary.html", {"error": f"Server error: {e}"})
