@@ -642,7 +642,7 @@ def score_summary(request):
                     "training": score_data["training_score"],
                     "total": score_data["total_score"],
                 })
-
+                print(member_analysis)
 
         return render(request, "reports/score_summary.html", {
             "months": months,
