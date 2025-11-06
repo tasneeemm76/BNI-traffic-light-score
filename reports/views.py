@@ -633,16 +633,48 @@ def score_summary(request):
 
                 member_analysis[member_name].append({
                     "period": month_label,
-                    "absent": score_data["absenteeism_score"],
-                    "referrals": score_data["referrals_week_score"],
-                    "tyfcb": score_data["tyfcb_score"],
-                    "visitors": score_data["visitors_week_score"],
-                    "testimonials": score_data["testimonials_week_score"],
-                    "on_time": score_data["arriving_on_time_score"],
-                    "training": score_data["training_score"],
-                    "total": score_data["total_score"],
+
+                    "absent": {
+                        "value": score_data["absenteeism_score"],
+                        "color": _color_by_absolute(score_data["absenteeism_score"], 15)
+                    },
+
+                    "referrals": {
+                        "value": score_data["referrals_week_score"],
+                        "color": _color_by_absolute(score_data["referrals_week_score"], 20)
+                    },
+
+                    "tyfcb": {
+                        "value": score_data["tyfcb_score"],
+                        "color": _color_by_absolute(score_data["tyfcb_score"], 15)
+                    },
+
+                    "visitors": {
+                        "value": score_data["visitors_week_score"],
+                        "color": _color_by_absolute(score_data["visitors_week_score"], 20)
+                    },
+
+                    "testimonials": {
+                        "value": score_data["testimonials_week_score"],
+                        "color": _color_by_absolute(score_data["testimonials_week_score"], 10)
+                    },
+
+                    "on_time": {
+                        "value": score_data["arriving_on_time_score"],
+                        "color": _color_by_absolute(score_data["arriving_on_time_score"], 5)
+                    },
+
+                    "training": {
+                        "value": score_data["training_score"],
+                        "color": _color_by_absolute(score_data["training_score"], 15)
+                    },
+
+                    "total": {
+                        "value": score_data["total_score"],
+                        "color": _color_by_absolute(score_data["total_score"], 100)
+                    },
                 })
-                print(member_analysis)
+
 
         return render(request, "reports/score_summary.html", {
             "months": months,
