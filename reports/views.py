@@ -552,6 +552,9 @@ def score_summary(request):
         member_names = set()
         raw_scores = defaultdict(dict)
 
+        # --------------------------------------
+        # HEATMAP MONTHLY SUMMARY
+        # --------------------------------------
         for report in reports:
             month_label = report.end_date.strftime("%b %y")
             if month_label not in months:
@@ -562,7 +565,6 @@ def score_summary(request):
             for md in report.member_data.all():
                 member_name = md.member.full_name or f"{md.member.first_name} {md.member.last_name}".strip()
 
-                # Skip ignored members
                 if is_ignored_member(member_name):
                     continue
 
@@ -604,10 +606,9 @@ def score_summary(request):
                     })
             table_data.append(row)
 
-        # ------------------------------------------
-# MEMBER-WISE ANALYSIS SECTION
-# ------------------------------------------
-
+        # --------------------------------------
+        # ✅ MEMBER-WISE ANALYSIS (CORRECT FORMAT)
+        # --------------------------------------
         member_analysis = defaultdict(list)
 
         for report in reports:
@@ -675,13 +676,14 @@ def score_summary(request):
                     },
                 })
 
+        # ✅ DEBUG REMOVE LATER
+        print("DEBUG MEMBER ANALYSIS SAMPLE:", list(member_analysis.items())[:1])
 
         return render(request, "reports/score_summary.html", {
             "months": months,
             "table_data": table_data,
             "member_analysis": member_analysis,
         })
-
 
     except Exception as e:
         return render(request, "reports/score_summary.html", {"error": f"Server error: {e}"})
