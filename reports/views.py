@@ -687,3 +687,55 @@ def score_summary(request):
 
     except Exception as e:
         return render(request, "reports/score_summary.html", {"error": f"Server error: {e}"})
+
+from .models import ScoreResult
+
+def member_analysis_view(request):
+
+    results = ScoreResult.objects.select_related("member", "report") \
+                                 .order_by("report__start_date")
+
+    if not results.exists():
+        return render(request, "reports/member_analysis.html", {
+            "error": "No stored score results found."
+        })
+
+    # ----------------------------
+    # Group by Member
+    # ----------------------------
+    members = defaultdict(list)
+
+    for r in results:
+        members[r.member.full_name].append({
+            "period": r.period_label,
+            "date": r.report.end_date,
+            "total": r.total_score,
+
+            "absent": {"value": r.absenteeism_score},
+            "referrals": {"value": r.ref_score},
+            "tyfcb": {"value": r.tyfcb_score},
+            "visitors": {"value": r.visitor_score},
+            "testimonials": {"value": r.testimonial_score},
+            "on_time": {"value": r.on_time_score},
+            "training": {"value": r.training_score},
+        })
+
+    # ----------------------------
+    # Sort periods chronologically for chart
+    # Sort members by highest total score
+    # ----------------------------
+    sorted_members = sorted(
+        members.items(),
+        key=lambda x: sum(row["total"] for row in x[1]),
+        reverse=True
+    )
+
+    # Sort each member's records by date
+    final_members = []
+    for name, records in sorted_members:
+        records = sorted(records, key=lambda r: r["date"])
+        final_members.append((name, records))
+
+    return render(request, "reports/member_analysis.html", {
+        "members": final_members,
+    })

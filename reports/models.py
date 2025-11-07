@@ -107,3 +107,35 @@ class TrainingData(models.Model):
         range_text = f" ({self.start_date} → {self.end_date})" if self.start_date and self.end_date else ""
         return f"{self.member.full_name} - {self.count} training(s){range_text}"
 
+class ScoreResult(models.Model):
+    """
+    Stores computed scoring results for each member per reporting period.
+    This avoids recalculating everything on every page load.
+    """
+
+    member = models.ForeignKey(Member, on_delete=models.CASCADE)
+    report = models.ForeignKey(ReportUpload, on_delete=models.CASCADE)
+
+    # convenience label
+    period_label = models.CharField(max_length=20)
+
+    # individual metric scores
+    ref_score = models.IntegerField(default=0)
+    visitor_score = models.IntegerField(default=0)
+    absenteeism_score = models.IntegerField(default=0)
+    training_score = models.IntegerField(default=0)
+    testimonial_score = models.IntegerField(default=0)
+    tyfcb_score = models.IntegerField(default=0)
+    on_time_score = models.IntegerField(default=0)
+
+    # final total score
+    total_score = models.IntegerField(default=0)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("member", "report")
+        ordering = ["report__start_date", "member__full_name"]
+
+    def __str__(self):
+        return f"{self.member.full_name} • {self.period_label} • {self.total_score}"
