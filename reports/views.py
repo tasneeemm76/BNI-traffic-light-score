@@ -222,8 +222,6 @@ def upload_file(request: HttpRequest) -> HttpResponse:
                 total_months=months
             )
 
-            print("\n===== DEBUG: Saving MemberData & TrainingData =====")
-            print(f"Training file entries: {len(training_counts or {})}\n")
 
             for _, row in df.iterrows():
                 first_name = str(row.get('First Name', '')).strip()
@@ -278,9 +276,7 @@ def upload_file(request: HttpRequest) -> HttpResponse:
                         defaults={'count': int(training_count or 0)},
                     )
 
-                    print(f"Saved TrainingData → {member.full_name}: {training_count} ({tr_from_date} → {tr_to_date})")
 
-            print("===== DEBUG: Data Save Complete =====\n")
 
         # === STEP 5: Render results ===
         context = {
@@ -535,7 +531,6 @@ def is_ignored_member(member_name: str) -> bool:
     ignored_names = {"total", "bni", "visitors"}
     return member_name.strip().lower() in ignored_names
 
-
 def score_summary(request):
     """Display a color-coded score heatmap: Member × Month."""
     try:
@@ -606,89 +601,179 @@ def score_summary(request):
                     })
             table_data.append(row)
 
-        # --------------------------------------
-        # ✅ MEMBER-WISE ANALYSIS (CORRECT FORMAT)
-        # --------------------------------------
-        member_analysis = defaultdict(list)
-
-        for report in reports:
-            month_label = report.end_date.strftime("%b %y")
-            training_lookup = {t.member_id: (t.count or 0) for t in report.training_data.all()}
-
-            for md in report.member_data.all():
-                member_name = md.member.full_name or f"{md.member.first_name} {md.member.last_name}".strip()
-
-                if is_ignored_member(member_name):
-                    continue
-
-                total_training = (md.CEU or 0) + training_lookup.get(md.member_id, 0)
-
-                try:
-                    score_data = calculate_score_from_data(
-                        member_data=md,
-                        total_weeks=report.total_weeks or 1.0,
-                        training_count=total_training
-                    )
-                except Exception:
-                    continue
-
-                member_analysis[member_name].append({
-                    "period": month_label,
-
-                    "absent": {
-                        "value": score_data["absenteeism_score"],
-                        "color": _color_by_absolute(score_data["absenteeism_score"], 15)
-                    },
-
-                    "referrals": {
-                        "value": score_data["referrals_week_score"],
-                        "color": _color_by_absolute(score_data["referrals_week_score"], 20)
-                    },
-
-                    "tyfcb": {
-                        "value": score_data["tyfcb_score"],
-                        "color": _color_by_absolute(score_data["tyfcb_score"], 15)
-                    },
-
-                    "visitors": {
-                        "value": score_data["visitors_week_score"],
-                        "color": _color_by_absolute(score_data["visitors_week_score"], 20)
-                    },
-
-                    "testimonials": {
-                        "value": score_data["testimonials_week_score"],
-                        "color": _color_by_absolute(score_data["testimonials_week_score"], 10)
-                    },
-
-                    "on_time": {
-                        "value": score_data["arriving_on_time_score"],
-                        "color": _color_by_absolute(score_data["arriving_on_time_score"], 5)
-                    },
-
-                    "training": {
-                        "value": score_data["training_score"],
-                        "color": _color_by_absolute(score_data["training_score"], 15)
-                    },
-
-                    "total": {
-                        "value": score_data["total_score"],
-                        "color": _color_by_absolute(score_data["total_score"], 100)
-                    },
-                })
-
-        # ✅ DEBUG REMOVE LATER
-        print("DEBUG MEMBER ANALYSIS SAMPLE:", list(member_analysis.items())[:1])
-
+        # ✅ RETURN WITHOUT MEMBER ANALYSIS
         return render(request, "reports/score_summary.html", {
             "months": months,
             "table_data": table_data,
-            "member_analysis": member_analysis,
         })
 
     except Exception as e:
         return render(request, "reports/score_summary.html", {"error": f"Server error: {e}"})
 
+def list_score_results(request):
+
+    results = ScoreResult.objects.select_related("member", "report")
+
+    if not results.exists():
+        return render(request, "reports/score_summary.html", {"error": "No stored scores found."})
+
+    # ✅ Months
+    months = list(
+        results.order_by("report__end_date")
+               .values_list("period_label", flat=True)
+               .distinct()
+    )
+
+    # ✅ Heatmap data
+    raw_scores = defaultdict(dict)
+    member_names = set()
+
+    for r in results:
+        if not r.member:
+            continue
+        name = r.member.full_name
+
+        if is_ignored_member(name):
+            continue
+
+        member_names.add(name)
+        raw_scores[name][r.period_label] = r.total_score
+
+    # ✅ Sort members
+    sorted_members = sorted(
+        member_names,
+        key=lambda n: sum(raw_scores[n].values()),
+        reverse=True
+    )
+
+    # ✅ Color scaling
+    max_score = max([v for m in raw_scores.values() for v in m.values()], default=100)
+
+    table_data = []
+    for name in sorted_members:
+        row = {"member": name, "scores": []}
+        for month in months:
+            score = raw_scores[name].get(month)
+            if score is None:
+                row["scores"].append({"value": "-", "color": "#f0f0f0"})
+            else:
+                row["scores"].append({
+                    "value": score,
+                    "color": _color_by_absolute(score, max_score)
+                })
+        table_data.append(row)
+
+    # ✅ Drilldown safe structure for template
+    drill_dict = defaultdict(list)
+
+    for r in results.order_by("-total_score"):
+        if is_ignored_member(r.member.full_name):
+            continue
+
+        drill_dict[r.period_label].append({
+            "name": r.member.full_name,
+            "total": r.total_score,
+
+            # ✅ ADD ONLY THIS → color for TOTAL SCORE
+            "total_color": _color_by_absolute(r.total_score or 0, 100),
+
+            "absent": r.absenteeism_score,
+            "ref": r.ref_score,
+            "tyfcb": r.tyfcb_score,
+            "visitors": r.visitor_score,
+            "testimonials": r.testimonial_score,
+            "on_time": r.on_time_score,
+            "training": r.training_score,
+        })
+
+    # ✅ Convert dict → LIST for safe template access
+    drilldown_list = []
+    for month in months:
+        drilldown_list.append({
+            "month": month,
+            "slug": month.replace(" ", "-").lower(),
+            "rows": sorted(drill_dict[month], key=lambda x: x["total"], reverse=True),
+        })
+
+    return render(request, "reports/score_results_list.html", {
+        "months": months,
+        "table_data": table_data,
+        "all_months": months,
+        "drilldown_list": drilldown_list,
+    })
+
+
+def month_detail_view(request):
+    """
+    Drill-down view for a selected month:
+    Shows detailed scores for ALL members for ONE month.
+    """
+
+    # Read GET param
+    period = request.GET.get("period")
+
+    if not period:
+        return render(request, "reports/month_detail.html", {
+            "error": "No month selected."
+        })
+
+    # Fetch only results for this month
+    results = ScoreResult.objects.select_related("member", "report") \
+                                 .filter(period_label=period) \
+                                 .order_by("member__full_name")
+
+    if not results.exists():
+        return render(request, "reports/month_detail.html", {
+            "error": f"No results found for {period}."
+        })
+
+    # -------------------------
+    # Build row list
+    # -------------------------
+    rows = []
+
+    for r in results:
+        if not r.member:
+            continue
+
+        name = r.member.full_name
+        if is_ignored_member(name):
+            continue
+
+        rows.append({
+            "name": name,
+            "total": r.total_score,
+
+            "absent": r.absenteeism_score,
+            "referrals": r.ref_score,
+            "tyfcb": r.tyfcb_score,
+            "visitors": r.visitor_score,
+            "testimonials": r.testimonial_score,
+            "on_time": r.on_time_score,
+            "training": r.training_score,
+
+            "report_start": r.report.start_date,
+            "report_end": r.report.end_date,
+        })
+
+    # -------------------------
+    # Sort highest → lowest
+    # -------------------------
+    rows = sorted(rows, key=lambda r: r["total"], reverse=True)
+
+    # -------------------------
+    # Send to template
+    # -------------------------
+    return render(request, "reports/month_detail.html", {
+        "period": period,
+        "rows": rows,
+    })
+
+
+from collections import defaultdict
+from django.shortcuts import render
 from .models import ScoreResult
+from datetime import datetime
 
 def member_analysis_view(request):
 
