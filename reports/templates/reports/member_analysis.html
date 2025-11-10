@@ -4,7 +4,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Member Analysis</title>
+    <title>Tasneem Bawaji</title>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
@@ -161,8 +161,22 @@
     <div class="header-bar">
     <div class="header-box">Region: Delhi Central</div>
     <div class="header-box">PATRONS</div>
-    <div class="header-box">September 2025</div>
 </div>
+
+<form method="get" style="margin-bottom:20px;">
+    <label><b>Select Member:</b></label>
+    <select name="member" onchange="this.form.submit()">
+        <option value="">-- Select Member --</option>
+        {% for m in member_names %}
+            <option value="{{ m }}" {% if m == selected_member %}selected{% endif %}>{{ m }}</option>
+        {% endfor %}
+    </select>
+</form>
+
+{% if not selected_member %}
+    <p style="font-size:16px; margin-top:20px;"><b>Please select a member to view the report.</b></p>
+{% endif %}
+
 
 <!-- ✅ FIXED SCORING BOX -->
 <div class="scoring-fixed">
@@ -335,11 +349,27 @@
             <td class="metric-cell">{{ r.testimonials.value }}</td>
             <td class="metric-cell">{{ r.on_time.value }}</td>
             <td class="metric-cell">{{ r.training.value }}</td>
-            <td class="total-cell">{{ r.total }}</td>
+<td class="total-cell" style="background: {{ r.color }}; color: white;">
+    {{ r.total }}
+</td>
         </tr>
         {% endfor %}
         </tbody>
     </table>
+
+   {% if suggestions %}
+<div style="margin-top:30px; padding:20px; border:2px solid #b30000; border-radius:6px;">
+    <h3 style="margin-bottom:15px; font-size:20px; color:#b30000;">
+        How Can You Increase Your Score?
+    </h3>
+
+    <ul style="font-size:16px; line-height:1.6;">
+        {% for s in suggestions %}
+            <li>{{ s }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
 
 {% endfor %}
 

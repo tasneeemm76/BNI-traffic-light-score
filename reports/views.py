@@ -4,7 +4,7 @@ from django.http import HttpRequest, HttpResponse, Http404
 from django.db import transaction
 from django.utils.dateparse import parse_date
 from datetime import date
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 
 import pandas as pd
 
@@ -153,6 +153,42 @@ def calculate_score_from_data(member_data: MemberData, total_weeks: float, train
 		'arriving_on_time_score': int(arriving_on_time_score),
 		'arrival_color': _color_by_absolute(int(arriving_on_time_score), arriving_on_time_max),
 	}
+
+
+def generate_suggestions(score_data: Dict[str, Any]) -> List[str]:
+    """Return suggestions based on low-scoring metrics."""
+    suggestions = []
+
+    # ---- Referrals ----
+    if score_data['referrals_week_score'] < 20:
+        suggestions.append("Increase your weekly referrals to improve your Referrals score.")
+
+    # ---- Visitors ----
+    if score_data['visitors_week_score'] < 20:
+        suggestions.append("Invite more visitors to meetings to boost your Visitors score.")
+
+    # ---- Absenteeism ----
+    if score_data['absenteeism_score'] < 15:
+        suggestions.append("Reduce absenteeism to maximize attendance points.")
+
+    # ---- Training ----
+    if score_data['training_score'] < 15:
+        suggestions.append("Attend more CEU/trainings to unlock full Training score.")
+
+    # ---- Testimonials ----
+    if score_data['testimonials_week_score'] < 10:
+        suggestions.append("Give more testimonials to improve your Testimonials score.")
+
+    # ---- TYFCB ----
+    if score_data['tyfcb_score'] < 15:
+        suggestions.append("Pass quality referrals to increase TYFCB value.")
+
+    # ---- On Time ----
+    if score_data['arriving_on_time_score'] < 5:
+        suggestions.append("Arrive on time consistently to earn On-Time points.")
+
+    return suggestions
+
 
 
 import io
@@ -773,29 +809,42 @@ def month_detail_view(request):
 from collections import defaultdict
 from django.shortcuts import render
 from .models import ScoreResult
-from datetime import datetime
 
 def member_analysis_view(request):
+
+    selected_member = request.GET.get("member")
 
     results = ScoreResult.objects.select_related("member", "report") \
                                  .order_by("report__start_date")
 
     if not results.exists():
         return render(request, "reports/member_analysis.html", {
-            "error": "No stored score results found."
+            "error": "No stored score results found.",
+            "member_names": [],
+            "selected_member": None,
+            "members": [],
+            "suggestions": [],
         })
 
     # ----------------------------
-    # Group by Member
+    # Group by valid members
     # ----------------------------
     members = defaultdict(list)
 
     for r in results:
-        members[r.member.full_name].append({
+        name = r.member.full_name
+
+        if is_ignored_member(name):
+            continue
+
+        total = r.total_score
+        color = _color_by_absolute(total, 100)
+
+        members[name].append({
             "period": r.period_label,
             "date": r.report.end_date,
             "total": r.total_score,
-
+            "color": color,
             "absent": {"value": r.absenteeism_score},
             "referrals": {"value": r.ref_score},
             "tyfcb": {"value": r.tyfcb_score},
@@ -805,22 +854,33 @@ def member_analysis_view(request):
             "training": {"value": r.training_score},
         })
 
-    # ----------------------------
-    # Sort periods chronologically for chart
-    # Sort members by highest total score
-    # ----------------------------
-    sorted_members = sorted(
-        members.items(),
-        key=lambda x: sum(row["total"] for row in x[1]),
-        reverse=True
-    )
+    member_names = sorted(members.keys())
 
-    # Sort each member's records by date
     final_members = []
-    for name, records in sorted_members:
-        records = sorted(records, key=lambda r: r["date"])
-        final_members.append((name, records))
+    suggestions = []        # ✅ new
+
+    if selected_member:
+        if selected_member in members:
+            records = sorted(members[selected_member], key=lambda r: r["date"])
+            final_members = [(selected_member, records)]
+
+            # ✅ RUN generate_suggestions ON THE LATEST RECORD ONLY
+            latest = records[-1]   # most recent period snapshot
+
+            suggestions = generate_suggestions({
+                # Map your existing structure into generate_suggestions format
+                'referrals_week_score': latest["referrals"]["value"],
+                'visitors_week_score': latest["visitors"]["value"],
+                'absenteeism_score': latest["absent"]["value"],
+                'training_score': latest["training"]["value"],
+                'testimonials_week_score': latest["testimonials"]["value"],
+                'tyfcb_score': latest["tyfcb"]["value"],
+                'arriving_on_time_score': latest["on_time"]["value"],
+            })
 
     return render(request, "reports/member_analysis.html", {
         "members": final_members,
+        "member_names": member_names,
+        "selected_member": selected_member,
+        "suggestions": suggestions,        # ✅ ADDED
     })
