@@ -646,21 +646,70 @@ def score_summary(request):
     except Exception as e:
         return render(request, "reports/score_summary.html", {"error": f"Server error: {e}"})
 
+
 def list_score_results(request):
+
+    preview_results = []
+    preview_start = None
+    preview_end = None
+    preview_weeks = None
+
+    if request.method == "POST" and request.FILES.get("file"):
+        try:
+            f = request.FILES["file"]
+            file_bytes = f.read()
+            filename = f.name
+
+            df, weeks, months_preview, from_date, to_date = load_and_clean(file_bytes, filename)
+            training_counts = {}
+
+            if request.FILES.get("training_file"):
+                tr_f = request.FILES['training_file']
+                tr_bytes = tr_f.read()
+
+                try:
+                    tr_df_raw = pd.read_excel(io.BytesIO(tr_bytes), header=None)
+                except Exception:
+                    tr_df_raw = pd.read_csv(io.BytesIO(tr_bytes), header=None)
+
+                tr_from_date, tr_to_date, header_row_index = parse_training_period_and_header(tr_df_raw)
+                if header_row_index == -1:
+                    raise ValueError("Training report must contain valid name headers.")
+
+                try:
+                    tr_df = pd.read_excel(io.BytesIO(tr_bytes), skiprows=header_row_index)
+                except Exception:
+                    tr_df = pd.read_csv(io.BytesIO(tr_bytes), skiprows=header_row_index)
+
+                training_counts = parse_training_counts(tr_df, tr_f.name)
+
+            preview_scored = score_dataframe(df, weeks, months_preview, training_counts)
+
+            for r in preview_scored:
+                preview_results.append({
+                    "name": r["name"],
+                    "total": r["total_score"],
+                    "color": r["color"],
+                })
+
+            preview_start = from_date
+            preview_end = to_date
+            preview_weeks = weeks
+
+        except Exception as e:
+            return render(request, "reports/score_results_list.html", {"error": str(e)})
 
     results = ScoreResult.objects.select_related("member", "report")
 
     if not results.exists():
-        return render(request, "reports/score_summary.html", {"error": "No stored scores found."})
+        return render(request, "reports/score_results_list.html", {"error": "No stored scores found."})
 
-    # ✅ Months
     months = list(
         results.order_by("report__end_date")
                .values_list("period_label", flat=True)
                .distinct()
     )
 
-    # ✅ Heatmap data
     raw_scores = defaultdict(dict)
     member_names = set()
 
@@ -668,21 +717,17 @@ def list_score_results(request):
         if not r.member:
             continue
         name = r.member.full_name
-
         if is_ignored_member(name):
             continue
-
         member_names.add(name)
         raw_scores[name][r.period_label] = r.total_score
 
-    # ✅ Sort members
     sorted_members = sorted(
         member_names,
         key=lambda n: sum(raw_scores[n].values()),
         reverse=True
     )
 
-    # ✅ Color scaling
     max_score = max([v for m in raw_scores.values() for v in m.values()], default=100)
 
     table_data = []
@@ -699,20 +744,16 @@ def list_score_results(request):
                 })
         table_data.append(row)
 
-    # ✅ Drilldown safe structure for template
     drill_dict = defaultdict(list)
 
     for r in results.order_by("-total_score"):
-        if is_ignored_member(r.member.full_name):
+        name = r.member.full_name
+        if is_ignored_member(name):
             continue
-
         drill_dict[r.period_label].append({
-            "name": r.member.full_name,
+            "name": name,
             "total": r.total_score,
-
-            # ✅ ADD ONLY THIS → color for TOTAL SCORE
             "total_color": _color_by_absolute(r.total_score or 0, 100),
-
             "absent": r.absenteeism_score,
             "ref": r.ref_score,
             "tyfcb": r.tyfcb_score,
@@ -722,7 +763,6 @@ def list_score_results(request):
             "training": r.training_score,
         })
 
-    # ✅ Convert dict → LIST for safe template access
     drilldown_list = []
     for month in months:
         drilldown_list.append({
@@ -732,6 +772,11 @@ def list_score_results(request):
         })
 
     return render(request, "reports/score_results_list.html", {
+        "preview_results": preview_results,
+        "preview_start": preview_start,
+        "preview_end": preview_end,
+        "preview_weeks": preview_weeks,
+
         "months": months,
         "table_data": table_data,
         "all_months": months,
@@ -882,5 +927,6 @@ def member_analysis_view(request):
         "members": final_members,
         "member_names": member_names,
         "selected_member": selected_member,
-        "suggestions": suggestions,        # ✅ ADDED
+        "suggestions": suggestions,      
     })
+
