@@ -9,7 +9,8 @@ from typing import Dict, Any, List, Optional
 import pandas as pd
 
 from .utils import load_and_clean, score_dataframe, parse_training_counts
-from .models import ReportUpload, Member, MemberData, TrainingData
+from .models import ReportUpload, Member, MemberData, TrainingData,ScoreResult, MemberData
+from .utils import load_and_clean, score_dataframe, parse_training_period_and_header, parse_training_counts
 
 
 def _color_by_absolute(score: int, max_score: int) -> str:
@@ -192,98 +193,6 @@ def calculate_score_from_data(
         'arrival_color': _color_by_absolute(int(arriving_on_time_score), arriving_on_time_max),
     }
 
-def generate_suggestions(score_data: Dict[str, Any]) -> List[str]:
-    """Return specific suggestions based on low-scoring metrics."""
-    suggestions = []
-
-    # --------------------------------------
-    # Referrals (goal: 1.2 per week for full score)
-    # --------------------------------------
-    ref_score = score_data['referrals_week_score']
-    ref_pw = score_data.get("ref_per_week", None)  # Add this to score_data when you call your scorer
-
-    if ref_pw is not None and ref_score < 20:
-        needed = max(0, (1.2 - ref_pw))
-        suggestions.append(
-            f"Give around {needed:.1f} more referrals per week to reach the top referral band."
-        )
-
-    # --------------------------------------
-    # Visitors (goal: 0.75 per week)
-    # --------------------------------------
-    visitor_score = score_data['visitors_week_score']
-    visitor_pw = score_data.get("visitors_per_week", None)
-
-    if visitor_pw is not None and visitor_score < 20:
-        needed = max(0, (0.75 - visitor_pw))
-        suggestions.append(
-            f"Invite about {needed:.1f} more visitors per week to hit the highest visitor score."
-        )
-
-    # --------------------------------------
-    # Absenteeism (goal: 0 absences)
-    # --------------------------------------
-    abs_score = score_data['absenteeism_score']
-    absences = score_data.get("A", None)
-
-    if absences is not None and abs_score < 15:
-        suggestions.append(
-            f"Reduce your absences — avoid missing your next {absences} meetings to improve attendance."
-        )
-
-    # --------------------------------------
-    # Training / CEUs (goal: 3+)
-    # --------------------------------------
-    training_score = score_data['training_score']
-    ceu_count = score_data.get("CEU", None)
-
-    if ceu_count is not None and training_score < 15:
-        needed = max(0, 3 - ceu_count)
-        suggestions.append(
-            f"Attend {needed} more CEU/training sessions to reach maximum training score."
-        )
-
-    # --------------------------------------
-    # Testimonials (goal: 0.075 per week)
-    # --------------------------------------
-    testimonials_score = score_data['testimonials_week_score']
-    testimonials_pw = score_data.get("testimonials_per_week", None)
-
-    if testimonials_pw is not None and testimonials_score < 10:
-        needed = max(0, (0.075 - testimonials_pw))
-        suggestions.append(
-            f"Share {needed:.2f} more testimonials per week to strengthen your testimonial score."
-        )
-
-    # --------------------------------------
-    # TYFCB (goal: ₹ 20,00,000+)
-    # --------------------------------------
-    tyfcb_score = score_data['tyfcb_score']
-    tyfcb_value = score_data.get("TYFCB", None)
-
-    if tyfcb_value is not None and tyfcb_score < 15:
-        needed = max(0, 2000000 - tyfcb_value)
-        suggestions.append(
-            f"Pass stronger referrals — generate about ₹{needed:,} more TYFCB to reach the top bracket."
-        )
-
-    # --------------------------------------
-    # On Time (goal: 0 late arrivals)
-    # --------------------------------------
-    if score_data['arriving_on_time_score'] < 5:
-        suggestions.append("Arrive on time for all meetings to secure the On-Time points every week.")
-
-    return suggestions
-
-
-import io
-import pandas as pd
-from datetime import date
-from django.db import transaction
-from django.shortcuts import render
-from django.http import HttpRequest, HttpResponse
-from .models import Member, MemberData, TrainingData, ReportUpload
-from .utils import load_and_clean, score_dataframe, parse_training_period_and_header, parse_training_counts
 
 
 def upload_file(request: HttpRequest) -> HttpResponse:
@@ -936,12 +845,10 @@ def month_detail_view(request):
     })
 
 
-from collections import defaultdict
-from django.shortcuts import render
-from .models import ScoreResult, MemberData
+
+
 
 def member_analysis_view(request):
-
     selected_member = request.GET.get("member")
 
     results = (
@@ -970,21 +877,21 @@ def member_analysis_view(request):
         if is_ignored_member(name):
             continue
 
-        total = r.total_score
+        total = r.total_score or 0
         color = _color_by_absolute(total, 100)
 
         members[name].append({
             "period": r.period_label,
             "date": r.report.end_date,
-            "total": r.total_score,
+            "total": total,
             "color": color,
-            "absent": {"value": r.absenteeism_score},
-            "referrals": {"value": r.ref_score},
-            "tyfcb": {"value": r.tyfcb_score},
-            "visitors": {"value": r.visitor_score},
-            "testimonials": {"value": r.testimonial_score},
-            "on_time": {"value": r.on_time_score},
-            "training": {"value": r.training_score},
+            "absent": {"value": r.absenteeism_score or 0},
+            "referrals": {"value": r.ref_score or 0},
+            "tyfcb": {"value": r.tyfcb_score or 0},
+            "visitors": {"value": r.visitor_score or 0},
+            "testimonials": {"value": r.testimonial_score or 0},
+            "on_time": {"value": r.on_time_score or 0},
+            "training": {"value": r.training_score or 0},
             "report_obj": r.report,
             "member_obj": r.member,
         })
@@ -999,12 +906,8 @@ def member_analysis_view(request):
     if selected_member and selected_member in members:
         records = sorted(members[selected_member], key=lambda r: r["date"])
         final_members = [(selected_member, records)]
-
         latest = records[-1]  # most recent snapshot
 
-        # -----------------------------------------
-        # Pull raw MemberData for per-week metrics
-        # -----------------------------------------
         try:
             md = MemberData.objects.get(
                 member=latest["member_obj"],
@@ -1013,34 +916,40 @@ def member_analysis_view(request):
         except MemberData.DoesNotExist:
             md = None
 
+        # compute per-week metrics if data exists
+        ref_per_week = visitors_per_week = testimonials_per_week = 0
+        A = CEU = TYFCB = 0
         if md:
-            # Total meets logic (P + A + S + M)
             total_meets = (md.P or 0) + (md.A or 0) + (md.S or 0) + (md.M or 0)
             total_meets = total_meets if total_meets > 0 else 1
 
-            # Per-week metrics for detailed suggestions
             ref_per_week = ((md.RGI or 0) + (md.RGO or 0)) / total_meets
             visitors_per_week = (md.V or 0) / total_meets
             testimonials_per_week = (md.T or 0) / total_meets
+            A = md.A or 0
+            CEU = md.CEU or 0
+            TYFCB = md.TYFCB or 0
 
-            # Feed ALL needed data into suggestion function
-            suggestions = generate_suggestions({
-                'referrals_week_score': latest["referrals"]["value"],
-                'visitors_week_score': latest["visitors"]["value"],
-                'absenteeism_score': latest["absent"]["value"],
-                'training_score': latest["training"]["value"],
-                'testimonials_week_score': latest["testimonials"]["value"],
-                'tyfcb_score': latest["tyfcb"]["value"],
-                'arriving_on_time_score': latest["on_time"]["value"],
+        # ✅ FIX: pass actual total score
+        suggestions = generate_suggestions({
+            'total_score': latest["total"],
 
-                # ✅ Extra raw data for numeric suggestions
-                'A': md.A or 0,
-                'CEU': md.CEU or 0,
-                'TYFCB': md.TYFCB or 0,
-                'ref_per_week': ref_per_week,
-                'visitors_per_week': visitors_per_week,
-                'testimonials_per_week': testimonials_per_week,
-            })
+            'referrals_week_score': latest["referrals"]["value"],
+            'visitors_week_score': latest["visitors"]["value"],
+            'absenteeism_score': latest["absent"]["value"],
+            'training_score': latest["training"]["value"],
+            'testimonials_week_score': latest["testimonials"]["value"],
+            'tyfcb_score': latest["tyfcb"]["value"],
+            'arriving_on_time_score': latest["on_time"]["value"],
+
+            # raw metrics for per-week suggestions
+            'A': A,
+            'CEU': CEU,
+            'TYFCB': TYFCB,
+            'ref_per_week': ref_per_week,
+            'visitors_per_week': visitors_per_week,
+            'testimonials_per_week': testimonials_per_week,
+        })
 
     return render(request, "reports/member_analysis.html", {
         "members": final_members,
@@ -1048,3 +957,105 @@ def member_analysis_view(request):
         "selected_member": selected_member,
         "suggestions": suggestions,
     })
+
+
+def generate_suggestions(score_data: dict) -> list:
+    """Return clear, personalized suggestions that explain how to reach full 100."""
+    suggestions = []
+
+    # --- Targets ---
+    REF_TARGET = 1.2
+    VISITOR_TARGET = 0.75
+    TESTIMONIAL_TARGET = 0.075
+    TRAINING_TARGET = 3
+    TYFCB_TARGET = 2000000
+    FULL_SCORE = 100
+    AVG_WEEKS = score_data.get("total_weeks", 12)
+
+    total_score = score_data.get("total_score", 0)
+    gap = FULL_SCORE - total_score
+    if gap > 0:
+        suggestions.append(
+            f"You're currently at {total_score}/100. Improve the areas below to close the {gap}-point gap and reach full 100."
+        )
+
+    # --- Referrals ---
+    ref_score = score_data["referrals_week_score"]
+    ref_pw = score_data.get("ref_per_week", 0)
+
+    if ref_score < 20:
+        needed = max(0, REF_TARGET - ref_pw)
+        per_week_needed = max(1, round(needed))
+        total_needed = per_week_needed * AVG_WEEKS
+        suggestions.append(
+            f"Referrals: Give {per_week_needed} more referral{'s' if per_week_needed > 1 else ''} per week "
+            f"({total_needed} total in {AVG_WEEKS} weeks) to reach full 20/20."
+        )
+
+    # --- Visitors ---
+    visitor_score = score_data["visitors_week_score"]
+    visitor_pw = score_data.get("visitors_per_week", 0)
+
+    if visitor_score < 20:
+        needed = max(0, VISITOR_TARGET - visitor_pw)
+        per_week_needed = max(1, round(needed))
+        total_needed = per_week_needed * AVG_WEEKS
+        suggestions.append(
+            f"Visitors: Invite {per_week_needed} more visitor{'s' if per_week_needed > 1 else ''} per week "
+            f"({total_needed} total) over {AVG_WEEKS} weeks to reach 20/20."
+        )
+
+    # --- Absenteeism ---
+    abs_score = score_data["absenteeism_score"]
+    absences = score_data.get("A", 0)
+    if abs_score < 15:
+        suggestions.append(
+            f"Attendance: You’ve missed {absences} meeting{'s' if absences != 1 else ''}. "
+            f"Attend all remaining meetings for the next {AVG_WEEKS} weeks to earn 15/15."
+        )
+
+    # --- Training / CEU ---
+    training_score = score_data["training_score"]
+    ceu_count = score_data.get("CEU", 0)
+    if training_score < 15:
+        needed = max(0, TRAINING_TARGET - ceu_count)
+        suggestions.append(
+            f"Training: Complete {needed} more CEU session{'s' if needed != 1 else ''} to reach 15/15."
+        )
+
+    # --- Testimonials ---
+    testimonials_score = score_data["testimonials_week_score"]
+    testimonials_pw = score_data.get("testimonials_per_week", 0)
+    if testimonials_score < 10:
+        needed = max(0, TESTIMONIAL_TARGET - testimonials_pw)
+        per_week_needed = max(1, round(needed))
+        total_needed = per_week_needed * AVG_WEEKS
+        suggestions.append(
+            f"Testimonials: Give {per_week_needed} more testimonial{'s' if per_week_needed > 1 else ''} per week "
+            f"({total_needed} total) to achieve full 10/10."
+        )
+
+    # --- TYFCB ---
+    tyfcb_score = score_data["tyfcb_score"]
+    tyfcb_value = score_data.get("TYFCB", 0)
+    if tyfcb_score < 15:
+        needed = max(0, TYFCB_TARGET - tyfcb_value)
+        suggestions.append(
+            f"TYFCB: Generate an additional ₹{needed:,.0f} in closed business to achieve 15/15."
+        )
+
+    # --- On Time ---
+    if score_data["arriving_on_time_score"] < 5:
+        suggestions.append(
+            "On Time: Arrive punctually for all meetings during the next reporting period to secure all 5/5 points."
+        )
+
+    # --- Motivational Summary ---
+    if total_score < 70:
+        suggestions.append("Focus on consistency over the next 3 months to reach a 100/100 score.")
+    elif total_score < 90:
+        suggestions.append("You're doing well! Slight improvements in referrals or attendance will push you into the 90+ range.")
+    else:
+        suggestions.append("Excellent work! Maintain your current performance to stay at 100/100.")
+
+    return suggestions
