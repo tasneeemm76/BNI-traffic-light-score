@@ -1,4 +1,3 @@
-vercel.json
 {
   "version": 2,
   "builds": [
@@ -17,3 +16,4 @@ vercel.json
     "DJANGO_SETTINGS_MODULE": "bni_delhi.settings"
   }
 }
+
