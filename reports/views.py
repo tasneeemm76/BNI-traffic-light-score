@@ -1,10 +1,11 @@
 import calendar
 import io
+import math
 from django.http import HttpRequest, HttpResponse, Http404
 from django.db import transaction
 from django.utils.dateparse import parse_date
 from datetime import date
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 
 import pandas as pd
 
@@ -679,9 +680,15 @@ def list_score_results(request):
 
             preview_scored = score_dataframe(df, weeks, months_preview, training_counts)
 
+            # ----------------------------
+            # APPLY IGNORE RULE IN PREVIEW
+            # ----------------------------
             for r in preview_scored:
+                name = r["name"]
+                if is_ignored_member(name):
+                    continue
                 preview_results.append({
-                    "name": r["name"],
+                    "name": name,
                     "total": r["total_score"],
                     "color": r["color"],
                 })
@@ -693,6 +700,9 @@ def list_score_results(request):
         except Exception as e:
             return render(request, "reports/score_results_list.html", {"error": str(e)})
 
+    # -------------------------------
+    # STORED RESULTS
+    # -------------------------------
     results = ScoreResult.objects.select_related("member", "report")
 
     if not results.exists():
@@ -707,12 +717,17 @@ def list_score_results(request):
     raw_scores = defaultdict(dict)
     member_names = set()
 
+    # -------------------------------
+    # APPLY IGNORE RULE WHILE BUILDING RAW SCORES
+    # -------------------------------
     for r in results:
         if not r.member:
             continue
+
         name = r.member.full_name
         if is_ignored_member(name):
             continue
+
         member_names.add(name)
         raw_scores[name][r.period_label] = r.total_score
 
@@ -740,10 +755,17 @@ def list_score_results(request):
 
     drill_dict = defaultdict(list)
 
+    # -------------------------------
+    # APPLY IGNORE RULE IN DRILL DOWN
+    # -------------------------------
     for r in results.order_by("-total_score"):
+        if not r.member:
+            continue
+
         name = r.member.full_name
         if is_ignored_member(name):
             continue
+
         drill_dict[r.period_label].append({
             "name": name,
             "total": r.total_score,
@@ -776,7 +798,6 @@ def list_score_results(request):
         "all_months": months,
         "drilldown_list": drilldown_list,
     })
-
 
 def month_detail_view(request):
     """
@@ -843,8 +864,6 @@ def month_detail_view(request):
         "period": period,
         "rows": rows,
     })
-
-
 
 
 
@@ -918,19 +937,22 @@ def member_analysis_view(request):
 
         # compute per-week metrics if data exists
         ref_per_week = visitors_per_week = testimonials_per_week = 0
+        total_meetings = 1
         A = CEU = TYFCB = 0
-        if md:
-            total_meets = (md.P or 0) + (md.A or 0) + (md.S or 0) + (md.M or 0)
-            total_meets = total_meets if total_meets > 0 else 1
 
-            ref_per_week = ((md.RGI or 0) + (md.RGO or 0)) / total_meets
-            visitors_per_week = (md.V or 0) / total_meets
-            testimonials_per_week = (md.T or 0) / total_meets
+        if md:
+            total_meetings = (md.P or 0) + (md.A or 0) + (md.S or 0) + (md.M or 0)
+            total_meetings = total_meetings if total_meetings > 0 else 1
+
+            ref_per_week = ((md.RGI or 0) + (md.RGO or 0)) / total_meetings
+            visitors_per_week = (md.V or 0) / total_meetings
+            testimonials_per_week = (md.T or 0) / total_meetings
+
             A = md.A or 0
             CEU = md.CEU or 0
             TYFCB = md.TYFCB or 0
 
-        # ✅ FIX: pass actual total score
+        # pass all metrics
         suggestions = generate_suggestions({
             'total_score': latest["total"],
 
@@ -942,13 +964,15 @@ def member_analysis_view(request):
             'tyfcb_score': latest["tyfcb"]["value"],
             'arriving_on_time_score': latest["on_time"]["value"],
 
-            # raw metrics for per-week suggestions
             'A': A,
             'CEU': CEU,
             'TYFCB': TYFCB,
             'ref_per_week': ref_per_week,
             'visitors_per_week': visitors_per_week,
             'testimonials_per_week': testimonials_per_week,
+
+            # CRITICAL FIX
+            'total_meetings': total_meetings,
         })
 
     return render(request, "reports/member_analysis.html", {
@@ -976,7 +1000,7 @@ def generate_suggestions(score_data: dict) -> list:
     gap = FULL_SCORE - total_score
     if gap > 0:
         suggestions.append(
-            f"You're currently at {total_score}/100. Improve the areas below to close the {gap}-point gap and reach full 100."
+            f"You're at {total_score}/100. Improve below areas to close the {gap}-point gap and reach full 100."
         )
 
     # --- Referrals ---
@@ -989,21 +1013,30 @@ def generate_suggestions(score_data: dict) -> list:
         total_needed = per_week_needed * AVG_WEEKS
         suggestions.append(
             f"Referrals: Give {per_week_needed} more referral{'s' if per_week_needed > 1 else ''} per week "
-            f"({total_needed} total in {AVG_WEEKS} weeks) to reach full 20/20."
+            f"({total_needed} total in {AVG_WEEKS} weeks) to reach 20/20."
         )
 
-    # --- Visitors ---
+    # ------------------------------------------------------------------
+    # ⭐ FINAL VISITOR LOGIC (CORRECT + FULLY PERSONALISED)
+    # ------------------------------------------------------------------
     visitor_score = score_data["visitors_week_score"]
     visitor_pw = score_data.get("visitors_per_week", 0)
+    total_meetings = score_data.get("total_meetings", 1)
 
-    if visitor_score < 20:
-        needed = max(0, VISITOR_TARGET - visitor_pw)
-        per_week_needed = max(1, round(needed))
-        total_needed = per_week_needed * AVG_WEEKS
-        suggestions.append(
-            f"Visitors: Invite {per_week_needed} more visitor{'s' if per_week_needed > 1 else ''} per week "
-            f"({total_needed} total) over {AVG_WEEKS} weeks to reach 20/20."
-        )
+    if visitor_score < 20:  
+        needed_per_week = VISITOR_TARGET - visitor_pw  
+
+        if needed_per_week > 0:
+            total_visitors_needed = round(needed_per_week * total_meetings)
+
+            # minimum 1 ONLY if needed
+            if total_visitors_needed < 1:
+                total_visitors_needed = 1
+
+            suggestions.append(
+                f"Visitors: Invite {total_visitors_needed} more visitor"
+                f"{'s' if total_visitors_needed > 1 else ''} to achieve full 20/20."
+            )
 
     # --- Absenteeism ---
     abs_score = score_data["absenteeism_score"]
@@ -1014,7 +1047,7 @@ def generate_suggestions(score_data: dict) -> list:
             f"Attend all remaining meetings for the next {AVG_WEEKS} weeks to earn 15/15."
         )
 
-    # --- Training / CEU ---
+    # --- Training ---
     training_score = score_data["training_score"]
     ceu_count = score_data.get("CEU", 0)
     if training_score < 15:
@@ -1026,13 +1059,14 @@ def generate_suggestions(score_data: dict) -> list:
     # --- Testimonials ---
     testimonials_score = score_data["testimonials_week_score"]
     testimonials_pw = score_data.get("testimonials_per_week", 0)
+
     if testimonials_score < 10:
         needed = max(0, TESTIMONIAL_TARGET - testimonials_pw)
         per_week_needed = max(1, round(needed))
         total_needed = per_week_needed * AVG_WEEKS
         suggestions.append(
             f"Testimonials: Give {per_week_needed} more testimonial{'s' if per_week_needed > 1 else ''} per week "
-            f"({total_needed} total) to achieve full 10/10."
+            f"({total_needed} total) to achieve 10/10."
         )
 
     # --- TYFCB ---
@@ -1041,21 +1075,13 @@ def generate_suggestions(score_data: dict) -> list:
     if tyfcb_score < 15:
         needed = max(0, TYFCB_TARGET - tyfcb_value)
         suggestions.append(
-            f"TYFCB: Generate an additional ₹{needed:,.0f} in closed business to achieve 15/15."
+            f"TYFCB: Generate an additional ₹{needed:,.0f} in closed business to reach 15/15."
         )
 
     # --- On Time ---
     if score_data["arriving_on_time_score"] < 5:
         suggestions.append(
-            "On Time: Arrive punctually for all meetings during the next reporting period to secure all 5/5 points."
+            "On Time: Arrive on time each week to secure all 5/5 points."
         )
-
-    # --- Motivational Summary ---
-    if total_score < 70:
-        suggestions.append("Focus on consistency over the next 3 months to reach a 100/100 score.")
-    elif total_score < 90:
-        suggestions.append("You're doing well! Slight improvements in referrals or attendance will push you into the 90+ range.")
-    else:
-        suggestions.append("Excellent work! Maintain your current performance to stay at 100/100.")
 
     return suggestions
