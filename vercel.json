@@ -1,19 +1,33 @@
 {
   "version": 2,
+
+  "functions": {
+    "api/index.py": {
+      "maxDuration": 10,
+      "memory": 1024
+    }
+  },
+
   "builds": [
     {
       "src": "api/index.py",
-      "use": "@vercel/python"
+      "use": "@vercel/python@3.1"
     }
   ],
+
   "routes": [
+    {
+      "src": "/static/(.*)",
+      "dest": "/static/$1"
+    },
     {
       "src": "/(.*)",
       "dest": "api/index.py"
     }
   ],
+
   "env": {
-    "DJANGO_SETTINGS_MODULE": "bni_delhi.settings"
+    "DJANGO_SETTINGS_MODULE": "bni_delhi.settings",
+    "PYTHONUNBUFFERED": "1"
   }
 }
-
