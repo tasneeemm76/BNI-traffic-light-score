@@ -3,154 +3,234 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="UTF-8">
-    <title>BNI Patrons</title>
+    <meta charset="UTF-8" />
+    <title>Tasneem Bawaji</title>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            background: white;
-            margin: 20px 420px 40px 20px;   /* ✅ Leaves space for scoring box */
-            color: #000;
-        }
-
-        h2 {
-            margin-top: 40px;
-            font-size: 22px;
-            font-weight: bold;
-            border-bottom: 2px solid #b30000;
-            padding-bottom: 6px;
-            width: fit-content;
-        }
-
-        /* ------------------ TABLE ------------------ */
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 25px;
-            margin-bottom: 50px;
-            font-size: 14px;
-        }
-
-        th, td {
-            border: 1px solid #ccc;
-            padding: 8px 10px;
-            text-align: center;
-        }
-
-        th {
-            background: #b30000;
-            color: white;
-            font-weight: bold;
-        }
-
-        .metric-cell {
-            font-weight: bold;
-            background: #e8e8e8;
-        }
-
-        td.total-cell {
-            background: #222;
-            color: white;
-            font-weight: bold;
-        }
-
-        /* ------------------ GRAPH ------------------ */
-        .chart-container {
-            width: 100%;
-            height: 270px;
-            margin-bottom: 25px;
-        }
-
-        /* ------------------ FIXED SCORING BOX ------------------ */
-        .scoring-fixed {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            width: 360px;
-            max-height: 95vh;
-            overflow-y: auto;
-            background: white;
-            border: 3px solid #b30000;
-            padding: 10px 15px;
-            z-index: 9999;
-        }
-
-        .scoring-fixed h3 {
-            background: #b30000;
-            color: white;
-            text-align: center;
-            padding: 8px;
-            margin: 0 0 15px 0;
-            font-size: 18px;
-            letter-spacing: .5px;
-        }
-
-        .rules-row {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 12px;
-        }
-
-        .rule-card {
-            border: 1px solid #888;
-            width: 48%;
-            background: #f9f9f9;
-        }
-
-        .rule-card h4 {
-            background: #b30000;
-            color: white;
-            padding: 4px;
-            margin: 0;
-            text-align: center;
-            font-size: 13px;
-        }
-
-        .rule-card table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        .rule-card td {
-            border: 1px solid #ccc;
-            text-align: center;
-            font-size: 12px;
-            padding: 3px;
-        }
-
-        /* Color Blocks */
-        .green { background:#6cc070; font-weight: bold; }
-        .yellow { background:#f5c542; font-weight: bold; }
-        .orange { background:#ff9900; font-weight: bold; }
-        .red { background:#e84c3d; font-weight: bold; }
-        .grey { background:#d3d3d3; font-weight: bold; }
-
-        .legend-box {
-            width: 20px; height: 20px;
-            border: 1px solid #555;
-        }
-
-          .header-bar {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 40px; /* spacing between boxes */
-    margin: 20px 0;
+        :root{
+    --brand:#b30000;
+    --white:#ffffff;
+    --muted:#f5f5f5;
+    --text:#111;
+    --chip-text:var(--brand);
+    --panel-width:360px;
 }
 
-.header-box {
-    background-color: #b30000; /* red background */
-    color: white;
-    padding: 8px 20px;
-    font-family: Arial, sans-serif;
-    font-weight: bold;
-    font-size: 16px;
-    border-radius: 2px;
+/* RESET */
+body {
+    font-family: "Segoe UI", Arial, sans-serif;
+    margin: 0;
+    padding: 0 20px;
+    background: #fff;
+    color: #333;
+    overflow-x: hidden;   /* Prevent horizontal scroll */
+}
+
+/* ---------------- HEADER ---------------- */
+.top-header {
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    background: var(--brand);
+    padding: 14px 24px;
+    margin: 10px auto;
+    border-radius: 10px;
+    max-width: 1250px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+}
+
+.header-chip {
+    background: var(--white);
+    color: var(--brand);
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-weight: 700;
+    font-size: 14px;
+    white-space: nowrap;
+}
+.header-chip a {
+    text-decoration: none;
+    color: var(--brand);
+}
+.header-chip a:hover { text-decoration: underline; }
+
+/* ---------------- HOME BUTTON ---------------- */
+.home-btn {
+    background: var(--white);
+    color: var(--brand);
+    padding: 8px 14px;
+    border-radius: 6px;
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.12);
+}
+.home-btn:hover { opacity: .95; transform: translateY(-1px); }
+
+/* ---------------- PAGE WRAP ---------------- */
+.page-wrap {
+    max-width: 1250px;
+    margin: 25px auto;
+    padding: 0 10px;
+    box-sizing: border-box;
+}
+
+/* ---------------- PAGE HEADING ---------------- */
+.main-heading {
     text-align: center;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    margin-top: 15px;
+    color: var(--brand);
+    font-size: 26px;
+    font-weight: 700;
+}
+
+/* ---------------- GRID LAYOUT ---------------- */
+.layout {
+    display: grid;
+    grid-template-columns: 1fr var(--panel-width);
+    gap: 28px;
+    align-items: flex-start;
+}
+@media (max-width: 900px) {
+    .layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ---------------- CONTENT ---------------- */
+.content { min-width: 0; }
+
+.selector { margin: 10px 0 18px 0; }
+.selector label { font-weight: 700; }
+.selector select {
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+}
+
+/* ---------------- HEADINGS ---------------- */
+h2 {
+    margin-top: 30px;
+    font-size: 22px;
+    font-weight: 700;
+    border-bottom: 2px solid var(--brand);
+    width: fit-content;
+    padding-bottom: 5px;
+}
+
+/* ---------------- CHART ---------------- */
+.chart-container {
+    width: 100%;
+    height: 270px;
+    margin-bottom: 22px;
+}
+
+/* ---------------- TABLE ---------------- */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+    margin: 15px 0 30px;
+}
+th, td {
+    border: 1px solid #d3d3d3;
+    padding: 8px;
+    text-align: center;
+}
+th {
+    background: var(--brand);
+    color: #fff;
+    font-weight: 700;
+}
+.metric-cell { background:#f1f1f1; font-weight:700; }
+.total-cell { color:#fff; font-weight:700; }
+
+/* ---------------- SUGGESTIONS ---------------- */
+.suggestions {
+    margin-top: 20px;
+    padding: 18px;
+    border: 2px solid var(--brand);
+    border-radius: 8px;
+}
+.suggestions h3 {
+    color: var(--brand);
+    margin: 0 0 10px;
+}
+
+/* ---------------- SCORING SIDEBAR ---------------- */
+.scoring-side {
+    max-width: var(--panel-width);
+    border: 3px solid var(--brand);
+    border-radius: 8px;
+    padding: 14px;
+    background: #fff;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.06);
+}
+.scoring-side h3 {
+    margin: 0 0 14px;
+    font-size: 18px;
+    text-align: center;
+    background: var(--brand);
+    color: #fff;
+    padding: 8px;
+    border-radius: 4px;
+}
+
+.rules-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+.rule-card {
+    flex: 1;
+    border: 1px solid #ddd;
+    background: #fafafa;
+    border-radius: 6px;
+    overflow: hidden;
+}
+.rule-card h4 {
+    margin: 0;
+    padding: 6px;
+    text-align: center;
+    background: var(--brand);
+    color: #fff;
+    font-size: 13px;
+}
+.rule-card table {
+    width: 100%;
+    font-size: 13px;
+}
+.rule-card td {
+    padding: 6px;
+    border: 1px solid #e6e6e6;
+    text-align: center;
+}
+
+/* Legend box */
+.legend-box {
+    width: 18px;
+    height: 18px;
+    border: 1px solid #555;
+    display: inline-block;
+    vertical-align: middle;
+}
+
+/* Small screens — better spacing */
+@media (max-width: 600px) {
+    .top-header {
+        padding: 12px 16px;
+    }
+    .header-chip { font-size: 13px; padding: 5px 10px; }
+    .home-btn { padding: 7px 12px; font-size: 14px; }
 }
 
 
@@ -158,220 +238,235 @@
 </head>
 
 <body>
-    <div class="header-bar">
-    <div class="header-box">Region: Delhi Central</div>
-    <div class="header-box">PATRONS</div>
+
+   
+<div class="top-header">
+    
+
+
+ <span class="header-chip">
+            <a href="{% url 'score_results_list' %}">Home</a>
+        </span>
+    <div class="nav-center">
+        <span class="header-chip">Region: Delhi Central</span>
+    </div>
 </div>
 
-<form method="get" style="margin-bottom:20px;">
-    <label><b>Select Member:</b></label>
-    <select name="member" onchange="this.form.submit()">
-        <option value="">-- Select Member --</option>
-        {% for m in member_names %}
-            <option value="{{ m }}" {% if m == selected_member %}selected{% endif %}>{{ m }}</option>
-        {% endfor %}
-    </select>
-</form>
-
-{% if not selected_member %}
-    <p style="font-size:16px; margin-top:20px;"><b>Please select a member to view the report.</b></p>
-{% endif %}
+<h1 class="main-heading">BNI Traffic Light Tracker – PATRONS</h1>
 
 
-<!-- ✅ FIXED SCORING BOX -->
-<div class="scoring-fixed">
-    <h3>Scoring</h3>
+    <div class="page-wrap">
 
-    <style>
-        .green { background:#008000; color:white; font-weight:bold; }
-        .amber { background:#FFBF00; font-weight:bold; }
-        .red { background:#ff0000; color:white; font-weight:bold; }
-        .grey { background:#808080; color:white; font-weight:bold; }
-    </style>
+        <div class="layout">
 
-    <!-- ✅ ROW 1: REFERRALS + VISITORS -->
-    <div class="rules-row">
-        <div class="rule-card">
-            <h4>Referrals / Week</h4>
-            <table>
-                <tr><td>&lt; 0.5</td><td class="grey">0</td></tr>
-                <tr><td>&lt; 0.75</td><td class="grey">5</td></tr>
-                <tr><td>&lt; 1</td><td class="red">10</td></tr>
-                <tr><td>&lt; 1.2</td><td class="amber">15</td></tr>
-                <tr><td>≥ 1.2</td><td class="green">20</td></tr>
-            </table>
-        </div>
+            <!-- LEFT: main content (charts, tables) -->
+            <main class="content">
 
-        <div class="rule-card">
-            <h4>Avg Visitor / Week</h4>
-            <table>
-                <tr><td>&lt; 0.1</td><td class="grey">0</td></tr>
-                <tr><td>&lt; 0.25</td><td class="red">5</td></tr>
-                <tr><td>&lt; 0.5</td><td class="amber">10</td></tr>
-                <tr><td>&lt; 0.75</td><td class="green">15</td></tr>
-                <tr><td>≥ 0.75</td><td class="green">20</td></tr>
-            </table>
-        </div>
-    </div>
+                <!-- MEMBER SELECTION -->
+                <form method="get" class="selector" style="margin-bottom:12px;">
+                    <label><b>Select Member:</b></label>
+                    <select name="member" onchange="this.form.submit()">
+                        <option value="">-- Select Member --</option>
+                        {% for m in member_names %}
+                        <option value="{{ m }}" {% if m == selected_member %}selected{% endif %}>{{ m }}</option>
+                        {% endfor %}
+                    </select>
+                </form>
 
-    <!-- ✅ ROW 2: ABSENTEEISM + TYFCB -->
-    <div class="rules-row">
-        <div class="rule-card">
-            <h4>Absenteeism</h4>
-            <table>
-                <tr><td>&gt; 2</td><td class="grey">0</td></tr>
-                <tr><td>= 2</td><td class="red">5</td></tr>
-                <tr><td>= 1</td><td class="red">10</td></tr>
-                <tr><td>&lt; 1</td><td class="green">15</td></tr>
-            </table>
-        </div>
+                {% if not selected_member %}
+                    <p class="notice"><b>Please select a member to view the report.</b></p>
+                {% endif %}
 
-        <div class="rule-card">
-            <h4>TYFCB</h4>
-            <table>
-                <tr><td>&lt; 500000</td><td class="green">0</td></tr>
-                <tr><td>&lt; 1000000</td><td class="red">5</td></tr>
-                <tr><td>&lt; 2000000</td><td class="amber">10</td></tr>
-                <tr><td>≥ 2000000</td><td class="green">15</td></tr>
-            </table>
-        </div>
-    </div>
+                {% if error %}
+                    <p style="color:red; text-align:center;">{{ error }}</p>
+                {% endif %}
 
-    <!-- ✅ ROW 3: TRAINING + TESTIMONIALS -->
-    <div class="rules-row">
-        <div class="rule-card">
-            <h4>Training</h4>
-            <table>
-                <tr><td>= 0</td><td class="grey">0</td></tr>
-                <tr><td>= 1</td><td class="red">5</td></tr>
-                <tr><td>= 2</td><td class="amber">10</td></tr>
-                <tr><td>≥ 3</td><td class="green">15</td></tr>
-            </table>
-        </div>
+                <!-- MEMBER SECTIONS: charts + tables (kept unchanged) -->
+                {% for member, records in members %}
 
-        <div class="rule-card">
-            <h4>Testimonials / Week</h4>
-            <table>
-                <tr><td>≤ 0</td><td class="red">0</td></tr>
-                <tr><td>&lt; 0.075</td><td class="amber">5</td></tr>
-                <tr><td>≥ 0.075</td><td class="green">10</td></tr>
-            </table>
-        </div>
-    </div>
+                    <h2>{{ member }}</h2>
 
-    <!-- ✅ ROW 4: ON TIME + LEGEND -->
-    <div class="rules-row">
-        <div class="rule-card">
-            <h4>Arriving On Time</h4>
-            <table>
-                <tr><td>Late ≥ 1</td><td class="red">0</td></tr>
-                <tr><td>No Late</td><td class="green">5</td></tr>
-            </table>
-        </div>
+                    <!-- GRAPH -->
+                    <div class="chart-container">
+                        <canvas id="chart_{{ forloop.counter }}"></canvas>
+                    </div>
 
-        <div class="rule-card">
-            <h4>Total Score Legend</h4>
-            <table>
-                <tr><td class="green legend-box"></td><td>≥ 70</td></tr>
-                <tr><td class="amber legend-box"></td><td>50–69</td></tr>
-                <tr><td class="red legend-box"></td><td>30–49</td></tr>
-                <tr><td class="grey legend-box"></td><td>&lt; 30</td></tr>
-            </table>
-        </div>
-    </div>
+                    <script>
+                        (function(){
+                            const ctx{{ forloop.counter }} = document.getElementById("chart_{{ forloop.counter }}").getContext("2d");
+                            new Chart(ctx{{ forloop.counter }}, {
+                                type: 'line',
+                                data: {
+                                    labels: [{% for r in records %}"{{ r.period }}",{% endfor %}],
+                                    datasets: [{
+                                        label: "Total Score",
+                                        data: [{% for r in records %}{{ r.total }},{% endfor %}],
+                                        borderWidth: 3,
+                                        pointRadius: 5,
+                                        borderColor: "#b30000",
+                                        backgroundColor: "#b30000",
+                                        tension: 0.3
+                                    }]
+                                },
+                                options: {
+                                    scales: { y: { min: 0, max: 100 } },
+                                    maintainAspectRatio: false,
+                                }
+                            });
+                        })();
+                    </script>
 
-</div>
+                    <!-- TABLE -->
+                    <table>
+                        <thead>
+                        <tr>
+                            <th>Period</th>
+                            <th>Absent<br>(15)</th>
+                            <th>Referrals<br>(20)</th>
+                            <th>TYFTB<br>(15)</th>
+                            <th>Visitors<br>(20)</th>
+                            <th>Testimonials<br>(10)</th>
+                            <th>On Time<br>(5)</th>
+                            <th>Training<br>(15)</th>
+                            <th>Total</th>
+                        </tr>
+                        </thead>
+
+                        <tbody>
+                        {% for r in records %}
+                        <tr>
+                            <td><b>{{ r.period }}</b></td>
+                            <td class="metric-cell">{{ r.absent.value }}</td>
+                            <td class="metric-cell">{{ r.referrals.value }}</td>
+                            <td class="metric-cell">{{ r.tyfcb.value }}</td>
+                            <td class="metric-cell">{{ r.visitors.value }}</td>
+                            <td class="metric-cell">{{ r.testimonials.value }}</td>
+                            <td class="metric-cell">{{ r.on_time.value }}</td>
+                            <td class="metric-cell">{{ r.training.value }}</td>
+                            <td class="total-cell" style="background: {{ r.color }}; color:white;">
+                                {{ r.total }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+
+                    {% if suggestions %}
+                    <div class="suggestions">
+                        <h3>How Can You Increase Your Score?</h3>
+                        <ul>
+                            {% for s in suggestions %}
+                                <li>{{ s }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    {% endif %}
+
+                {% endfor %}
+
+            </main>
+
+            <!-- RIGHT: static scoring sidebar -->
+            <aside class="scoring-side" aria-label="Scoring panel">
+                <h3>Scoring</h3>
+
+                <!-- ROW 1 -->
+                <div class="rules-row">
+                    <div class="rule-card">
+                        <h4>Referrals / Week</h4>
+                        <table>
+                            <tr><td>&lt; 0.5</td><td class="grey">0</td></tr>
+                            <tr><td>&lt; 0.75</td><td class="grey">5</td></tr>
+                            <tr><td>&lt; 1</td><td class="red">10</td></tr>
+                            <tr><td>&lt; 1.2</td><td class="amber">15</td></tr>
+                            <tr><td>≥ 1.2</td><td class="green">20</td></tr>
+                        </table>
+                    </div>
+
+                    <div class="rule-card">
+                        <h4>Avg Visitor / Week</h4>
+                        <table>
+                            <tr><td>&lt; 0.1</td><td class="grey">0</td></tr>
+                            <tr><td>&lt; 0.25</td><td class="red">5</td></tr>
+                            <tr><td>&lt; 0.5</td><td class="amber">10</td></tr>
+                            <tr><td>&lt; 0.75</td><td class="green">15</td></tr>
+                            <tr><td>≥ 0.75</td><td class="green">20</td></tr>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- ROW 2 -->
+                <div class="rules-row">
+                    <div class="rule-card">
+                        <h4>Absenteeism</h4>
+                        <table>
+                            <tr><td>&gt; 2</td><td class="grey">0</td></tr>
+                            <tr><td>= 2</td><td class="red">5</td></tr>
+                            <tr><td>= 1</td><td class="red">10</td></tr>
+                            <tr><td>&lt; 1</td><td class="green">15</td></tr>
+                        </table>
+                    </div>
+
+                    <div class="rule-card">
+                        <h4>TYFCB</h4>
+                        <table>
+                            <tr><td>&lt; 500000</td><td class="green">0</td></tr>
+                            <tr><td>&lt; 1000000</td><td class="red">5</td></tr>
+                            <tr><td>&lt; 2000000</td><td class="amber">10</td></tr>
+                            <tr><td>≥ 2000000</td><td class="green">15</td></tr>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- ROW 3 -->
+                <div class="rules-row">
+                    <div class="rule-card">
+                        <h4>Training</h4>
+                        <table>
+                            <tr><td>= 0</td><td class="grey">0</td></tr>
+                            <tr><td>= 1</td><td class="red">5</td></tr>
+                            <tr><td>= 2</td><td class="amber">10</td></tr>
+                            <tr><td>≥ 3</td><td class="green">15</td></tr>
+                        </table>
+                    </div>
+
+                    <div class="rule-card">
+                        <h4>Testimonials / Week</h4>
+                        <table>
+                            <tr><td>≤ 0</td><td class="red">0</td></tr>
+                            <tr><td>&lt; 0.075</td><td class="amber">5</td></tr>
+                            <tr><td>≥ 0.075</td><td class="green">10</td></tr>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- ROW 4 -->
+                <div class="rules-row">
+                    <div class="rule-card">
+                        <h4>Arriving On Time</h4>
+                        <table>
+                            <tr><td>Late ≥ 1</td><td class="red">0</td></tr>
+                            <tr><td>No Late</td><td class="green">5</td></tr>
+                        </table>
+                    </div>
+
+                    <div class="rule-card">
+                        <h4>Total Score Legend</h4>
+                        <table>
+                            <tr><td><span class="legend-box" style="background:#6cc070;"></span></td><td>≥ 70</td></tr>
+                            <tr><td><span class="legend-box" style="background:#FFBF00;"></span></td><td>50–69</td></tr>
+                            <tr><td><span class="legend-box" style="background:#e84c3d;"></span></td><td>30–49</td></tr>
+                            <tr><td><span class="legend-box" style="background:#d3d3d3;"></span></td><td>&lt; 30</td></tr>
+                        </table>
+                    </div>
+                </div>
 
 
-{% if error %}
-<p style="color:red; text-align:center;">{{ error }}</p>
-{% endif %}
+            </aside>
 
-<!-- ✅ MEMBER SECTIONS -->
-{% for member, records in members %}
+        </div> <!-- .layout -->
 
-    <h2>{{ member }}</h2>
-
-    <!-- GRAPH -->
-    <div class="chart-container">
-        <canvas id="chart_{{ forloop.counter }}"></canvas>
-    </div>
-
-    <script>
-        const ctx{{ forloop.counter }} = document
-            .getElementById("chart_{{ forloop.counter }}")
-            .getContext("2d");
-
-        new Chart(ctx{{ forloop.counter }}, {
-            type: 'line',
-            data: {
-                labels: [{% for r in records %}"{{ r.period }}",{% endfor %}],
-                datasets: [{
-                    label: "Total Score",
-                    data: [{% for r in records %}{{ r.total }},{% endfor %}],
-                    borderWidth: 3,
-                    pointRadius: 5,
-                    borderColor: "#b30000",
-                    backgroundColor: "#b30000",
-                    tension: 0.3
-                }]
-            },
-            options: {
-                scales: { y: { min: 0, max: 100 } }
-            }
-        });
-    </script>
-
-    <!-- TABLE -->
-    <table>
-        <thead>
-        <tr>
-            <th>Period</th>
-            <th>Absent<br>(15)</th>
-            <th>Referrals<br>(20)</th>
-            <th>TYFTB<br>(15)</th>
-            <th>Visitors<br>(20)</th>
-            <th>Testimonials<br>(10)</th>
-            <th>On Time<br>(5)</th>
-            <th>Training<br>(15)</th>
-            <th>Total</th>
-        </tr>
-        </thead>
-
-        <tbody>
-        {% for r in records %}
-        <tr>
-            <td><b>{{ r.period }}</b></td>
-            <td class="metric-cell">{{ r.absent.value }}</td>
-            <td class="metric-cell">{{ r.referrals.value }}</td>
-            <td class="metric-cell">{{ r.tyfcb.value }}</td>
-            <td class="metric-cell">{{ r.visitors.value }}</td>
-            <td class="metric-cell">{{ r.testimonials.value }}</td>
-            <td class="metric-cell">{{ r.on_time.value }}</td>
-            <td class="metric-cell">{{ r.training.value }}</td>
-<td class="total-cell" style="background: {{ r.color }}; color: white;">
-    {{ r.total }}
-</td>
-        </tr>
-        {% endfor %}
-        </tbody>
-    </table>
-
-   {% if suggestions %}
-<div style="margin-top:30px; padding:20px; border:2px solid #b30000; border-radius:6px;">
-    <h3 style="margin-bottom:15px; font-size:20px; color:#b30000;">
-        How Can You Increase Your Score?
-    </h3>
-
-    <ul style="font-size:16px; line-height:1.6;">
-        {% for s in suggestions %}
-            <li>{{ s }}</li>
-        {% endfor %}
-    </ul>
-</div>
-{% endif %}
-
-{% endfor %}
+    </div> <!-- .page-wrap -->
 
 </body>
 </html>

@@ -9,7 +9,8 @@
     <style>
         body {
             font-family: "Segoe UI", Arial, sans-serif;
-            margin: 40px;
+           margin: 0;
+            padding: 0px 20px;
             background: #fff;
             color: #333;
         }
@@ -21,6 +22,7 @@
             border-collapse: collapse;
             width: 100%;
             font-size: 14px;
+            
         }
 
         th, td {
@@ -80,13 +82,13 @@
         /* =======================
            FILE UPLOAD UI
         ========================= */
-        .upload-container {
-            background: #fafafa;
-            padding: 25px;
-            border: 2px solid #b30000;
-            border-radius: 6px;
-            margin-bottom: 30px;
-        }
+       .upload-container {
+    background: #fff;
+    border-left: 4px solid #b30000;
+    padding: 22px;
+    border-radius: 6px;
+}
+
 
         .upload-container input {
             margin: 10px 0 15px 0;
@@ -137,32 +139,12 @@
             text-decoration: underline;
         }
 
-        .month-list a:hover {
-            color: #000;
-        }
+       .month-list a:hover {
+    transform: translateX(3px);
+    transition: 0.15s;
+}
 
-        /* ======================
-           MEMBER ANALYSIS BUTTON
-        ====================== */
-        .analysis-btn {
-            display: inline-block;
-            background: #b30000;
-            color: white !important;
-            padding: 12px 24px;
-            border-radius: 4px;
-            font-size: 15px;
-            font-weight: bold;
-            letter-spacing: 0.5px;
-            text-decoration: none;
-            margin: 15px 0 30px 0;
-            box-shadow: 0 3px 6px rgba(0,0,0,0.22);
-            transition: 0.2s;
-        }
-
-        .analysis-btn:hover {
-            background: #7a0000;
-        }
-
+        
         /* ======================
            DRILLDOWN SECTION
         ====================== */
@@ -178,9 +160,14 @@
             background: #ffffff;
             box-shadow: 0 2px 6px rgba(0,0,0,0.12);
         }
+        .drill-box h3 {
+    color: #b30000;
+    margin-bottom: 15px;
+}
+
 
         .sub-table th {
-            background: #333;
+            background: #b30000;
         }
 
         /* ======================
@@ -206,6 +193,79 @@
             border-radius: 4px;
             border: 1px solid #777;
         }
+
+        .top-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 20px;
+    background: #b30000;
+    color: white;
+    border-radius: 10px;
+    margin: 10px 20px;
+    overflow-x: hidden;
+    flex-wrap: wrap;
+    gap: 10px;
+     box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+}
+
+.home-btn {
+    background: white;
+    color: #b30000;
+    padding: 8px 14px;
+    border-radius: 6px;
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.nav-center {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.header-chip {
+    background: #ffffff;
+    color: #b30000;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-weight: 600;
+}
+.header-chip a {
+    color: #b30000;
+    text-decoration: none;
+    font-weight: 600;
+}
+.header-chip a:hover {
+    text-decoration: underline;
+}
+
+.main-heading {
+    text-align: center;
+    margin-top: 20px;
+    color: #b30000;
+    font-size: 26px;
+    font-weight: 700;
+}
+
+@media (max-width: 600px) {
+    table {
+        font-size: 12px;
+    }
+
+    th, td {
+        padding: 8px;
+    }
+
+    .header-box {
+        padding: 8px 18px;
+        font-size: 14px;
+    }
+
+  
+}
+
     </style>
 
 
@@ -225,13 +285,21 @@
 </head>
 <body>
 
+<div class="top-header">
+    
+
+
+ <span class="header-chip">
+            <a href="{% url 'member_analysis' %}">View Member-wise Analysis →</a>
+        </span>
+    <div class="nav-center">
+        <span class="header-chip">Region: Delhi Central</span>
+        <span class="header-chip">PATRONS</span>
+    </div>
+</div>
+
 <h1 class="main-heading">BNI Traffic Light Tracker – PATRONS</h1>
 
-<div class="header-bar">
-    <div class="header-box">Region: Delhi Central</div>
-    <div class="header-box">PATRONS</div>
-    <div class="header-box">Summary</div>
-</div>
 
 {% if error %}
     <p style="text-align:center; color:red; font-weight:bold;">{{ error }}</p>
@@ -291,13 +359,6 @@
     {% endfor %}
 </div>
 
-
-<!-- MEMBER ANALYSIS BUTTON -->
-<div>
-    <a href="{% url 'member_analysis' %}" class="analysis-btn">
-        View Member Analysis →
-    </a>
-</div>
 
 
 <!-- HEATMAP -->
