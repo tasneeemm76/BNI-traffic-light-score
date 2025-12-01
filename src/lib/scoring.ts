@@ -319,6 +319,7 @@ export async function persistScoreRun(params: PersistScoreParams) {
     throw new Error("No scores to persist");
   }
 
+  // Use a longer timeout for large uploads (60 seconds)
   return prisma.$transaction(async (tx) => {
     // Check for existing uploads with the SAME period (same month/year)
     // Only replace if the period is exactly the same, not just overlapping
@@ -405,18 +406,42 @@ export async function persistScoreRun(params: PersistScoreParams) {
     });
 
     // Persist training rows (even if unmatched) for traceability.
-    for (const row of params.trainingRows) {
-      const normalizedName = normalizePersonKey(row.firstName, row.lastName);
-      const member = await tx.member.findFirst({ where: { normalizedName } });
-      await tx.trainingData.create({
-        data: {
-          uploadId: upload.id,
-          memberId: member?.id,
-          trainingCount: row.credits,
-          normalizedName,
-          rawRow: row,
-        },
+    // Process efficiently to avoid transaction timeouts
+    if (params.trainingRows.length > 0) {
+      // First, get all members in one query to avoid N+1 queries
+      const allNormalizedNames = params.trainingRows.map(row => 
+        normalizePersonKey(row.firstName, row.lastName)
+      );
+      const uniqueNormalizedNames = [...new Set(allNormalizedNames)];
+      
+      const members = await tx.member.findMany({
+        where: { normalizedName: { in: uniqueNormalizedNames } },
       });
+      const memberMap = new Map(members.map(m => [m.normalizedName, m]));
+      
+      // Create training data records sequentially to avoid transaction issues
+      // Process in smaller batches to prevent timeout
+      const batchSize = 50;
+      for (let i = 0; i < params.trainingRows.length; i += batchSize) {
+        const batch = params.trainingRows.slice(i, i + batchSize);
+        const batchPromises = batch.map((row) => {
+          const normalizedName = normalizePersonKey(row.firstName, row.lastName);
+          const member = memberMap.get(normalizedName);
+          
+          return tx.trainingData.create({
+            data: {
+              uploadId: upload.id,
+              memberId: member?.id ?? null,
+              trainingCount: row.credits ?? 0,
+              normalizedName,
+              rawRow: row,
+            },
+          });
+        });
+        
+        // Wait for batch to complete before moving to next
+        await Promise.all(batchPromises);
+      }
     }
 
     for (const score of params.scores) {
@@ -484,6 +509,9 @@ export async function persistScoreRun(params: PersistScoreParams) {
     });
 
     return upload;
+  }, {
+    maxWait: 60000, // Maximum time to wait for a transaction slot (60 seconds)
+    timeout: 60000, // Maximum time the transaction can run (60 seconds)
   });
 }
 
