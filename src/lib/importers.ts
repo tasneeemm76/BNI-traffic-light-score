@@ -5,6 +5,24 @@ import { ignoredMemberNames, mainReportRowSchema, trainingRowSchema, type MainRe
 type RawRow = Record<string, unknown>;
 type RowArray = (string | number | boolean | null | undefined)[];
 
+/**
+ * Converts input to Node.js Buffer for Vercel serverless compatibility
+ * Handles both Node.js Buffer and ArrayBuffer types
+ */
+const toNodeBuffer = (input: Buffer | ArrayBuffer | Uint8Array): Buffer => {
+  if (Buffer.isBuffer(input)) {
+    return input;
+  }
+  if (input instanceof ArrayBuffer) {
+    return Buffer.from(input);
+  }
+  if (input instanceof Uint8Array) {
+    return Buffer.from(input);
+  }
+  // Fallback: try to create buffer from input
+  return Buffer.from(input as any);
+};
+
 const MAIN_HEADER_MAP: Record<string, keyof MainReportRow> = {
   member: "memberName",
   membername: "memberName",
@@ -215,27 +233,45 @@ const findMainHeaderRowIndex = (rows: (string | number | boolean | null | undefi
   return 0; // Fallback to first row if no header found
 };
 
-const parseWorkbook = async <T>(buffer: Buffer, mapper: (row: RawRow) => T | null): Promise<T[]> => {
+const parseWorkbook = async <T>(buffer: Buffer | ArrayBuffer | Uint8Array, mapper: (row: RawRow) => T | null): Promise<T[]> => {
+  // Convert to Node.js Buffer for Vercel compatibility
+  const nodeBuffer = toNodeBuffer(buffer);
+  
   // Limit file size to 10MB
   const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-  if (buffer.length > MAX_FILE_SIZE) {
+  if (nodeBuffer.length > MAX_FILE_SIZE) {
     throw new Error("File size exceeds maximum allowed size of 10MB");
   }
   
   const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(buffer);
+  await workbook.xlsx.load(nodeBuffer);
+  
+  // Get first worksheet (ExcelJS best practice)
+  if (workbook.worksheets.length === 0) {
+    return [];
+  }
   const worksheet = workbook.worksheets[0];
   
-  // Convert worksheet to row arrays
+  // Convert worksheet to row arrays (ExcelJS best practice: use model for data extraction)
   const rowArrays: RowArray[] = [];
   worksheet.eachRow((row, rowNumber) => {
     const rowData: RowArray = [];
     row.eachCell({ includeEmpty: true }, (cell) => {
       const value = cell.value;
+      // Handle ExcelJS value types properly
       if (value === null || value === undefined) {
         rowData.push(null);
-      } else if (typeof value === 'object' && 'text' in value) {
-        rowData.push((value as { text: string }).text);
+      } else if (typeof value === 'object') {
+        // Handle rich text, formulas, etc.
+        if ('text' in value && typeof (value as { text: string }).text === 'string') {
+          rowData.push((value as { text: string }).text);
+        } else if ('result' in value) {
+          // Formula result
+          rowData.push((value as { result: unknown }).result as string | number | boolean);
+        } else {
+          // Fallback: stringify object
+          rowData.push(String(value));
+        }
       } else {
         rowData.push(value as string | number | boolean);
       }
@@ -327,15 +363,23 @@ const toRowArraysFromCsv = (buffer: Buffer): Promise<RowArray[]> =>
     });
   });
 
-const toRowArraysFromWorkbook = async (buffer: Buffer): Promise<RowArray[]> => {
+const toRowArraysFromWorkbook = async (buffer: Buffer | ArrayBuffer | Uint8Array): Promise<RowArray[]> => {
+  // Convert to Node.js Buffer for Vercel compatibility
+  const nodeBuffer = toNodeBuffer(buffer);
+  
   // Limit file size to 10MB
   const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-  if (buffer.length > MAX_FILE_SIZE) {
+  if (nodeBuffer.length > MAX_FILE_SIZE) {
     throw new Error("File size exceeds maximum allowed size of 10MB");
   }
   
   const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(buffer);
+  await workbook.xlsx.load(nodeBuffer);
+  
+  // Get first worksheet
+  if (workbook.worksheets.length === 0) {
+    return [];
+  }
   const worksheet = workbook.worksheets[0];
   
   const rawRows: RowArray[] = [];
@@ -343,10 +387,17 @@ const toRowArraysFromWorkbook = async (buffer: Buffer): Promise<RowArray[]> => {
     const rowData: RowArray = [];
     row.eachCell({ includeEmpty: true }, (cell) => {
       const value = cell.value;
+      // Handle ExcelJS value types properly
       if (value === null || value === undefined) {
         rowData.push(null);
-      } else if (typeof value === 'object' && 'text' in value) {
-        rowData.push((value as { text: string }).text);
+      } else if (typeof value === 'object') {
+        if ('text' in value && typeof (value as { text: string }).text === 'string') {
+          rowData.push((value as { text: string }).text);
+        } else if ('result' in value) {
+          rowData.push((value as { result: unknown }).result as string | number | boolean);
+        } else {
+          rowData.push(String(value));
+        }
       } else {
         rowData.push(value as string | number | boolean);
       }
@@ -769,29 +820,47 @@ export type ParseMainReportResult = {
 };
 
 const parseWorkbookWithMetadata = async (
-  buffer: Buffer,
+  buffer: Buffer | ArrayBuffer | Uint8Array,
   mapper: (row: RawRow) => MainReportRow | null
 ): Promise<ParseMainReportResult> => {
+  // Convert to Node.js Buffer for Vercel compatibility
+  const nodeBuffer = toNodeBuffer(buffer);
+  
   // Limit file size to 10MB
   const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-  if (buffer.length > MAX_FILE_SIZE) {
+  if (nodeBuffer.length > MAX_FILE_SIZE) {
     throw new Error("File size exceeds maximum allowed size of 10MB");
   }
   
   const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(buffer);
+  await workbook.xlsx.load(nodeBuffer);
+  
+  // Get first worksheet (ExcelJS best practice)
+  if (workbook.worksheets.length === 0) {
+    return { rows: [], metadata: {} };
+  }
   const worksheet = workbook.worksheets[0];
   
-  // Convert worksheet to row arrays
+  // Convert worksheet to row arrays (ExcelJS best practice: use model for data extraction)
   const rowArrays: RowArray[] = [];
   worksheet.eachRow((row) => {
     const rowData: RowArray = [];
     row.eachCell({ includeEmpty: true }, (cell) => {
       const value = cell.value;
+      // Handle ExcelJS value types properly
       if (value === null || value === undefined) {
         rowData.push(null);
-      } else if (typeof value === 'object' && 'text' in value) {
-        rowData.push((value as { text: string }).text);
+      } else if (typeof value === 'object') {
+        // Handle rich text, formulas, etc.
+        if ('text' in value && typeof (value as { text: string }).text === 'string') {
+          rowData.push((value as { text: string }).text);
+        } else if ('result' in value) {
+          // Formula result
+          rowData.push((value as { result: unknown }).result as string | number | boolean);
+        } else {
+          // Fallback: stringify object
+          rowData.push(String(value));
+        }
       } else {
         rowData.push(value as string | number | boolean);
       }
