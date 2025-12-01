@@ -3,7 +3,6 @@ import { UploadSource } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { parseMainReport, parseTrainingReport, type ReportMetadata } from "@/lib/importers";
 import { calculateMemberScores, persistScoreRun } from "@/lib/scoring";
-import { persistUpload } from "@/lib/file";
 
 export async function POST(request: Request) {
   const formData = await request.formData();
@@ -23,19 +22,13 @@ export async function POST(request: Request) {
   const chapterFromForm = formData.get("chapter")?.toString();
 
   try {
+    // Read files into memory - no file persistence needed
+    // Data is processed and saved directly to database
     const mainBuffer = Buffer.from(await mainFile.arrayBuffer());
     const trainingBuffer =
       trainingFile instanceof File ? Buffer.from(await trainingFile.arrayBuffer()) : null;
 
-    // Attempt to persist files (optional - may fail in serverless environments)
-    // Files are ephemeral in serverless, but data is already processed and stored in DB
-    const [mainPersisted, trainingPersisted] = await Promise.all([
-      persistUpload(mainBuffer, mainFile.name),
-      trainingBuffer && trainingFile instanceof File
-        ? persistUpload(trainingBuffer, trainingFile.name)
-        : Promise.resolve(null),
-    ]);
-
+    // Parse files and extract data
     const [mainReportResult, trainingReportResult] = await Promise.all([
       parseMainReport(mainBuffer, mainFile.name),
       trainingBuffer && trainingFile instanceof File
@@ -131,14 +124,16 @@ export async function POST(request: Request) {
     });
 
     try {
+      // Save data to database - no file storage needed
+      // Files are processed in memory and data is persisted to DB
       const uploadResult = await persistScoreRun({
         prisma,
         scores,
         trainingRows,
         label: generatedLabel,
-        // File paths are optional - may be null in serverless environments
-        mainFilePath: mainPersisted?.fullPath,
-        trainingFilePath: trainingPersisted?.fullPath,
+        // No file paths - files are not persisted, only data is saved
+        mainFilePath: undefined,
+        trainingFilePath: undefined,
         source,
         chapter: finalMetadata.chapter,
         periodStart: validatedPeriodStart,
