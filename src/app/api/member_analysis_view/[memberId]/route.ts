@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getMemberAnalysis } from "@/lib/reporting";
 
 type Params = {
-  params: { memberId: string };
+  params: Promise<{ memberId: string }>;
 };
 
 export async function GET(request: Request, { params }: Params) {
@@ -14,7 +14,8 @@ export async function GET(request: Request, { params }: Params) {
     return NextResponse.json({ error: "limit must be numeric" }, { status: 400 });
   }
   try {
-    const rows = await getMemberAnalysis(prisma, { memberId: params.memberId, limit });
+    const { memberId } = await params;
+    const rows = await getMemberAnalysis(prisma, { memberId, limit });
     return NextResponse.json({ rows });
   } catch (error) {
     return NextResponse.json(

@@ -216,7 +216,20 @@ const findMainHeaderRowIndex = (rows: (string | number | boolean | null | undefi
 };
 
 const parseWorkbook = <T>(buffer: Buffer, mapper: (row: RawRow) => T | null): T[] => {
-  const workbook = XLSX.read(buffer, { type: "buffer" });
+  // Mitigate ReDoS vulnerability: limit file size to 10MB
+  const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+  if (buffer.length > MAX_FILE_SIZE) {
+    throw new Error("File size exceeds maximum allowed size of 10MB");
+  }
+  
+  // Mitigate Prototype Pollution: use safe read options
+  const workbook = XLSX.read(buffer, { 
+    type: "buffer",
+    cellDates: false,
+    cellNF: false,
+    cellStyles: false,
+    sheetStubs: false
+  });
   const sheetName = workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
   
@@ -312,7 +325,20 @@ const toRowArraysFromCsv = (buffer: Buffer): Promise<RowArray[]> =>
   });
 
 const toRowArraysFromWorkbook = (buffer: Buffer): RowArray[] => {
-  const workbook = XLSX.read(buffer, { type: "buffer" });
+  // Mitigate ReDoS vulnerability: limit file size to 10MB
+  const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+  if (buffer.length > MAX_FILE_SIZE) {
+    throw new Error("File size exceeds maximum allowed size of 10MB");
+  }
+  
+  // Mitigate Prototype Pollution: use safe read options
+  const workbook = XLSX.read(buffer, { 
+    type: "buffer",
+    cellDates: false,
+    cellNF: false,
+    cellStyles: false,
+    sheetStubs: false
+  });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   const rawRows = XLSX.utils.sheet_to_json<(string | number | boolean | null | undefined)[]>(sheet, { 
     header: 1, 
@@ -738,7 +764,20 @@ const parseWorkbookWithMetadata = (
   buffer: Buffer,
   mapper: (row: RawRow) => MainReportRow | null
 ): ParseMainReportResult => {
-  const workbook = XLSX.read(buffer, { type: "buffer" });
+  // Mitigate ReDoS vulnerability: limit file size to 10MB
+  const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+  if (buffer.length > MAX_FILE_SIZE) {
+    throw new Error("File size exceeds maximum allowed size of 10MB");
+  }
+  
+  // Mitigate Prototype Pollution: use safe read options
+  const workbook = XLSX.read(buffer, { 
+    type: "buffer",
+    cellDates: false,
+    cellNF: false,
+    cellStyles: false,
+    sheetStubs: false
+  });
   const sheetName = workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
   
