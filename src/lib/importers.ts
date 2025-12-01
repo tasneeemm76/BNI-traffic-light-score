@@ -106,7 +106,7 @@ const normalizeMainRow = (row: RawRow): MainReportRow | null => {
   
   try {
     return mainReportRowSchema.parse(normalized);
-  } catch (error) {
+  } catch (error: unknown) {
     // Log validation errors for debugging but don't crash
     console.warn("Row validation failed:", error, "Row data:", normalized);
     return null;
@@ -129,11 +129,11 @@ const parseCsv = <T>(
             .map(mapper)
             .filter((row): row is T => Boolean(row));
           resolve(rows);
-        } catch (error) {
+        } catch (error: unknown) {
           reject(error);
         }
       },
-      error: (error) => reject(error),
+      error: (error: Error) => reject(error),
     });
   });
 };
@@ -323,7 +323,7 @@ const toRowArraysFromCsv = (buffer: Buffer): Promise<RowArray[]> =>
       header: false,
       skipEmptyLines: "greedy",
       complete: (results) => resolve(results.data),
-      error: (error) => reject(error),
+      error: (error: Error) => reject(error),
     });
   });
 
@@ -419,7 +419,7 @@ export async function parseTrainingReport(buffer: Buffer, fileName: string): Pro
   if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) {
     try {
       rowArrays = await toRowArraysFromWorkbook(buffer);
-    } catch (error) {
+    } catch (error: unknown) {
       // If Excel fails, try as CSV
       console.warn("Failed to parse as Excel, trying CSV:", error);
       rowArrays = await toRowArraysFromCsv(buffer);
@@ -430,7 +430,7 @@ export async function parseTrainingReport(buffer: Buffer, fileName: string): Pro
     // Try Excel first, then CSV
     try {
       rowArrays = await toRowArraysFromWorkbook(buffer);
-    } catch (error) {
+    } catch (error: unknown) {
       console.warn("Failed to parse as Excel, trying CSV:", error);
       rowArrays = await toRowArraysFromCsv(buffer);
     }
