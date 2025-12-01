@@ -13,7 +13,7 @@ export async function POST() {
         { member: { displayName: "asc" } },
         { periodMonth: "asc" },
         { totalScore: "desc" },
-        { createdAt: "desc" },
+        { upload: { createdAt: "desc" } },
       ],
     });
 
@@ -34,12 +34,12 @@ export async function POST() {
     
     for (const [key, rows] of grouped.entries()) {
       if (rows.length > 1) {
-        // Sort by score (descending) and creation date (descending)
+        // Sort by score (descending) and upload creation date (descending)
         rows.sort((a, b) => {
           if (b.totalScore !== a.totalScore) {
             return b.totalScore - a.totalScore;
           }
-          return b.createdAt.getTime() - a.createdAt.getTime();
+          return b.upload.createdAt.getTime() - a.upload.createdAt.getTime();
         });
         
         // Keep the first (best) one, mark others for deletion
