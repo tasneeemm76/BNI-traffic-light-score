@@ -1,0 +1,83 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum UploadStatus {
+  PROCESSING
+  PROCESSED
+  FAILED
+}
+
+enum UploadSource {
+  ADMIN
+  USER_PREVIEW
+}
+
+model Member {
+  id             String        @id @default(cuid())
+  firstName      String?
+  lastName       String?
+  displayName    String
+  normalizedName String        @unique
+  chapter        String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  dataPoints     MemberData[]
+  trainings      TrainingData[]
+}
+
+model ReportUpload {
+  id               String        @id @default(cuid())
+  label            String?
+  chapter          String?
+  periodStart      DateTime
+  periodEnd        DateTime
+  totalWeeks       Int           @default(4)
+  status           UploadStatus  @default(PROCESSING)
+  source           UploadSource  @default(ADMIN)
+  mainFilePath     String?
+  trainingFilePath String?
+  errorMessage     String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  dataPoints       MemberData[]
+  trainings        TrainingData[]
+}
+
+model MemberData {
+  id                 String       @id @default(cuid())
+  memberId           String
+  uploadId           String
+  periodMonth        DateTime
+  referralsPerWeek   Float        @default(0)
+  visitorsPerWeek    Float        @default(0)
+  testimonialsPerWeek Float       @default(0)
+  trainingCount      Int          @default(0)
+  tyfcb              Float        @default(0)
+  absenteeism        Float        @default(0)
+  arrivalOnTime      Float        @default(0)
+  totalScore         Float        @default(0)
+  colorBand          String
+  rawMetrics         Json
+  member             Member       @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  upload             ReportUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+
+  @@unique([memberId, uploadId])
+  @@index([periodMonth])
+}
+
+model TrainingData {
+  id         String        @id @default(cuid())
+  memberId   String?
+  uploadId   String
+  trainingCount Int        @default(0)
+  normalizedName String?
+  rawRow     Json
+  member     Member?       @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  upload     ReportUpload  @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+}
