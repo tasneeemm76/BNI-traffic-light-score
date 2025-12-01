@@ -8,19 +8,27 @@ type RowArray = (string | number | boolean | null | undefined)[];
 /**
  * Converts input to Node.js Buffer for Vercel serverless compatibility
  * Handles both Node.js Buffer and ArrayBuffer types
+ * Returns a proper Node.js Buffer that ExcelJS can use
  */
 const toNodeBuffer = (input: Buffer | ArrayBuffer | Uint8Array): Buffer => {
+  let buffer: Buffer;
+  
   if (Buffer.isBuffer(input)) {
-    return input;
+    // Already a Node.js Buffer
+    buffer = input;
+  } else if (input instanceof ArrayBuffer) {
+    // Convert ArrayBuffer to Buffer
+    buffer = Buffer.from(input);
+  } else if (input instanceof Uint8Array) {
+    // Convert Uint8Array to Buffer
+    buffer = Buffer.from(input.buffer, input.byteOffset, input.byteLength);
+  } else {
+    // Fallback: try to create buffer from input
+    buffer = Buffer.from(input as any);
   }
-  if (input instanceof ArrayBuffer) {
-    return Buffer.from(input);
-  }
-  if (input instanceof Uint8Array) {
-    return Buffer.from(input);
-  }
-  // Fallback: try to create buffer from input
-  return Buffer.from(input as any);
+  
+  // Ensure we return a proper Node.js Buffer type for ExcelJS
+  return buffer as Buffer;
 };
 
 const MAIN_HEADER_MAP: Record<string, keyof MainReportRow> = {
@@ -244,6 +252,7 @@ const parseWorkbook = async <T>(buffer: Buffer | ArrayBuffer | Uint8Array, mappe
   }
   
   const workbook = new ExcelJS.Workbook();
+  // ExcelJS accepts Buffer - nodeBuffer is already converted to proper Node.js Buffer
   await workbook.xlsx.load(nodeBuffer);
   
   // Get first worksheet (ExcelJS best practice)
@@ -374,6 +383,7 @@ const toRowArraysFromWorkbook = async (buffer: Buffer | ArrayBuffer | Uint8Array
   }
   
   const workbook = new ExcelJS.Workbook();
+  // ExcelJS accepts Buffer - nodeBuffer is already converted to proper Node.js Buffer
   await workbook.xlsx.load(nodeBuffer);
   
   // Get first worksheet
@@ -833,6 +843,7 @@ const parseWorkbookWithMetadata = async (
   }
   
   const workbook = new ExcelJS.Workbook();
+  // ExcelJS accepts Buffer - nodeBuffer is already converted to proper Node.js Buffer
   await workbook.xlsx.load(nodeBuffer);
   
   // Get first worksheet (ExcelJS best practice)
