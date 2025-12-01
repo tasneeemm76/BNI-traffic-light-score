@@ -27,11 +27,13 @@ export async function POST(request: Request) {
     const trainingBuffer =
       trainingFile instanceof File ? Buffer.from(await trainingFile.arrayBuffer()) : null;
 
+    // Attempt to persist files (optional - may fail in serverless environments)
+    // Files are ephemeral in serverless, but data is already processed and stored in DB
     const [mainPersisted, trainingPersisted] = await Promise.all([
       persistUpload(mainBuffer, mainFile.name),
       trainingBuffer && trainingFile instanceof File
         ? persistUpload(trainingBuffer, trainingFile.name)
-        : Promise.resolve(undefined),
+        : Promise.resolve(null),
     ]);
 
     const [mainReportResult, trainingReportResult] = await Promise.all([
@@ -134,7 +136,8 @@ export async function POST(request: Request) {
         scores,
         trainingRows,
         label: generatedLabel,
-        mainFilePath: mainPersisted.fullPath,
+        // File paths are optional - may be null in serverless environments
+        mainFilePath: mainPersisted?.fullPath,
         trainingFilePath: trainingPersisted?.fullPath,
         source,
         chapter: finalMetadata.chapter,
