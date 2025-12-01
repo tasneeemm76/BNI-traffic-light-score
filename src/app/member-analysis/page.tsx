@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { PageLayout } from "@/components/layouts/PageLayout";
 import { Card } from "@/components/ui/Card";
@@ -28,7 +28,7 @@ type Suggestion = {
   priority: "high" | "medium" | "low";
 };
 
-export default function MemberAnalysisPage() {
+function MemberAnalysisContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [memberNames, setMemberNames] = useState<string[]>([]);
@@ -38,12 +38,7 @@ export default function MemberAnalysisPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const member = searchParams.get("member");
-    fetchData(member || null);
-  }, [searchParams]);
-
-  const fetchData = async (member: string | null) => {
+  const fetchData = useCallback(async (member: string | null) => {
     setLoading(true);
     setError(null);
     try {
@@ -70,7 +65,12 @@ export default function MemberAnalysisPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const member = searchParams.get("member");
+    fetchData(member || null);
+  }, [searchParams, fetchData]);
 
   const handleMemberChange = (memberName: string) => {
     if (memberName) {
@@ -297,5 +297,13 @@ export default function MemberAnalysisPage() {
         </>
       )}
     </PageLayout>
+  );
+}
+
+export default function MemberAnalysisPage() {
+  return (
+    <Suspense fallback={<LoadingSpinner size={60} message="Loading member analysis..." />}>
+      <MemberAnalysisContent />
+    </Suspense>
   );
 }
