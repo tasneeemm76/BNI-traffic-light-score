@@ -9,26 +9,25 @@ type RowArray = (string | number | boolean | null | undefined)[];
  * Converts input to Node.js Buffer for Vercel serverless compatibility
  * Handles both Node.js Buffer and ArrayBuffer types
  * Returns a proper Node.js Buffer that ExcelJS can use
+ * Uses explicit type casting to ensure compatibility with ExcelJS types
  */
 const toNodeBuffer = (input: Buffer | ArrayBuffer | Uint8Array): Buffer => {
-  let buffer: Buffer;
-  
   if (Buffer.isBuffer(input)) {
-    // Already a Node.js Buffer
-    buffer = input;
-  } else if (input instanceof ArrayBuffer) {
-    // Convert ArrayBuffer to Buffer
-    buffer = Buffer.from(input);
-  } else if (input instanceof Uint8Array) {
-    // Convert Uint8Array to Buffer
-    buffer = Buffer.from(input.buffer, input.byteOffset, input.byteLength);
-  } else {
-    // Fallback: try to create buffer from input
-    buffer = Buffer.from(input as any);
+    // Already a Node.js Buffer - cast to ensure correct type
+    return input as Buffer;
   }
-  
-  // Ensure we return a proper Node.js Buffer type for ExcelJS
-  return buffer as Buffer;
+  if (input instanceof ArrayBuffer) {
+    // Convert ArrayBuffer to Buffer
+    const buf = Buffer.from(input);
+    return buf as Buffer;
+  }
+  if (input instanceof Uint8Array) {
+    // Convert Uint8Array to Buffer
+    const buf = Buffer.from(input.buffer, input.byteOffset, input.byteLength);
+    return buf as Buffer;
+  }
+  // Fallback: try to create buffer from input
+  return Buffer.from(input as any) as Buffer;
 };
 
 const MAIN_HEADER_MAP: Record<string, keyof MainReportRow> = {
@@ -252,8 +251,9 @@ const parseWorkbook = async <T>(buffer: Buffer | ArrayBuffer | Uint8Array, mappe
   }
   
   const workbook = new ExcelJS.Workbook();
-  // ExcelJS accepts Buffer - nodeBuffer is already converted to proper Node.js Buffer
-  await workbook.xlsx.load(nodeBuffer);
+  // ExcelJS accepts Buffer, ArrayBuffer, or Uint8Array
+  // Use type assertion to satisfy TypeScript while maintaining runtime compatibility
+  await workbook.xlsx.load(nodeBuffer as any);
   
   // Get first worksheet (ExcelJS best practice)
   if (workbook.worksheets.length === 0) {
@@ -383,8 +383,9 @@ const toRowArraysFromWorkbook = async (buffer: Buffer | ArrayBuffer | Uint8Array
   }
   
   const workbook = new ExcelJS.Workbook();
-  // ExcelJS accepts Buffer - nodeBuffer is already converted to proper Node.js Buffer
-  await workbook.xlsx.load(nodeBuffer);
+  // ExcelJS accepts Buffer, ArrayBuffer, or Uint8Array
+  // Use type assertion to satisfy TypeScript while maintaining runtime compatibility
+  await workbook.xlsx.load(nodeBuffer as any);
   
   // Get first worksheet
   if (workbook.worksheets.length === 0) {
@@ -843,8 +844,9 @@ const parseWorkbookWithMetadata = async (
   }
   
   const workbook = new ExcelJS.Workbook();
-  // ExcelJS accepts Buffer - nodeBuffer is already converted to proper Node.js Buffer
-  await workbook.xlsx.load(nodeBuffer);
+  // ExcelJS accepts Buffer, ArrayBuffer, or Uint8Array
+  // Use type assertion to satisfy TypeScript while maintaining runtime compatibility
+  await workbook.xlsx.load(nodeBuffer as any);
   
   // Get first worksheet (ExcelJS best practice)
   if (workbook.worksheets.length === 0) {
