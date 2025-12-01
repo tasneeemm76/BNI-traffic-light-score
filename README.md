@@ -91,7 +91,41 @@ Every result stores the raw per-week numbers, score components, and the derived 
 
 - `npm run dev` – Next.js dev server
 - `npm run build` – Production build
+- `npm run start` – Production server
 - `npm run lint` – Next linting
+- `npm run type-check` – TypeScript type checking
 - `npx prisma studio` – Inspect database
+- `npm run db:migrate` – Run database migrations
+
+### Deployment to Vercel
+
+1. **Push to GitHub** – Ensure your code is pushed to your repository
+
+2. **Connect to Vercel**:
+   - Go to [vercel.com](https://vercel.com)
+   - Import your GitHub repository
+   - Vercel will auto-detect Next.js
+
+3. **Configure Environment Variables** in Vercel Dashboard:
+   - `DATABASE_URL` – Your PostgreSQL connection string
+   - `NEXTAUTH_SECRET` – A secure random string (min 32 characters)
+   - `NEXTAUTH_URL` – Your production URL (e.g., `https://your-app.vercel.app`)
+   - `FILE_STORAGE_ROOT` – File storage path (default: `./storage/uploads`)
+
+4. **Run Database Migrations**:
+   - After first deployment, run: `npx prisma migrate deploy`
+   - Or use Vercel's build command which includes Prisma generation
+
+5. **Deploy**:
+   - Vercel will automatically build and deploy
+   - Check build logs for any issues
+
+### Production Considerations
+
+- **File Storage**: For production, consider using Vercel Blob Storage or S3 instead of local filesystem
+- **Database**: Ensure your PostgreSQL database is production-ready (connection pooling, backups)
+- **Environment Variables**: Never commit `.env` files, use Vercel's environment variable settings
+- **Monitoring**: Set up error tracking (e.g., Sentry) for production
+- **Rate Limiting**: Consider adding rate limiting for API routes in production
 
 Enjoy building! 🎯

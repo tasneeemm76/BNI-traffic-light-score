@@ -39,3 +39,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# storage (keep structure, ignore files)
+/storage/uploads/*
+!/storage/uploads/.gitkeep
+
+# prisma
+/prisma/migrations/*.sql
