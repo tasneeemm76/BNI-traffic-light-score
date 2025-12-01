@@ -1,5 +1,5 @@
 import Papa from "papaparse";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { ignoredMemberNames, mainReportRowSchema, trainingRowSchema, type MainReportRow, type TrainingRow } from "./validators";
 
 type RawRow = Record<string, unknown>;
@@ -215,29 +215,32 @@ const findMainHeaderRowIndex = (rows: (string | number | boolean | null | undefi
   return 0; // Fallback to first row if no header found
 };
 
-const parseWorkbook = <T>(buffer: Buffer, mapper: (row: RawRow) => T | null): T[] => {
-  // Mitigate ReDoS vulnerability: limit file size to 10MB
+const parseWorkbook = async <T>(buffer: Buffer, mapper: (row: RawRow) => T | null): Promise<T[]> => {
+  // Limit file size to 10MB
   const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
   if (buffer.length > MAX_FILE_SIZE) {
     throw new Error("File size exceeds maximum allowed size of 10MB");
   }
   
-  // Mitigate Prototype Pollution: use safe read options
-  const workbook = XLSX.read(buffer, { 
-    type: "buffer",
-    cellDates: false,
-    cellNF: false,
-    cellStyles: false,
-    sheetStubs: false
-  });
-  const sheetName = workbook.SheetNames[0];
-  const sheet = workbook.Sheets[sheetName];
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer);
+  const worksheet = workbook.worksheets[0];
   
-  // First, get raw row arrays to find the header row
-  const rowArrays = XLSX.utils.sheet_to_json<(string | number | boolean | null | undefined)[]>(sheet, { 
-    header: 1, 
-    blankrows: false,
-    defval: null 
+  // Convert worksheet to row arrays
+  const rowArrays: RowArray[] = [];
+  worksheet.eachRow((row, rowNumber) => {
+    const rowData: RowArray = [];
+    row.eachCell({ includeEmpty: true }, (cell) => {
+      const value = cell.value;
+      if (value === null || value === undefined) {
+        rowData.push(null);
+      } else if (typeof value === 'object' && 'text' in value) {
+        rowData.push((value as { text: string }).text);
+      } else {
+        rowData.push(value as string | number | boolean);
+      }
+    });
+    rowArrays.push(rowData);
   });
   
   // Find the actual header row index
@@ -297,7 +300,7 @@ export async function parseMainReport(buffer: Buffer, fileName: string): Promise
     return { rows, metadata: {} };
   }
   if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) {
-    return parseWorkbookWithMetadata(buffer, normalizeMainRow);
+    return await parseWorkbookWithMetadata(buffer, normalizeMainRow);
   }
   throw new Error("Unsupported file type for main report. Upload .csv or .xlsx");
 }
@@ -324,26 +327,31 @@ const toRowArraysFromCsv = (buffer: Buffer): Promise<RowArray[]> =>
     });
   });
 
-const toRowArraysFromWorkbook = (buffer: Buffer): RowArray[] => {
-  // Mitigate ReDoS vulnerability: limit file size to 10MB
+const toRowArraysFromWorkbook = async (buffer: Buffer): Promise<RowArray[]> => {
+  // Limit file size to 10MB
   const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
   if (buffer.length > MAX_FILE_SIZE) {
     throw new Error("File size exceeds maximum allowed size of 10MB");
   }
   
-  // Mitigate Prototype Pollution: use safe read options
-  const workbook = XLSX.read(buffer, { 
-    type: "buffer",
-    cellDates: false,
-    cellNF: false,
-    cellStyles: false,
-    sheetStubs: false
-  });
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  const rawRows = XLSX.utils.sheet_to_json<(string | number | boolean | null | undefined)[]>(sheet, { 
-    header: 1, 
-    blankrows: false,
-    defval: null 
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer);
+  const worksheet = workbook.worksheets[0];
+  
+  const rawRows: RowArray[] = [];
+  worksheet.eachRow((row) => {
+    const rowData: RowArray = [];
+    row.eachCell({ includeEmpty: true }, (cell) => {
+      const value = cell.value;
+      if (value === null || value === undefined) {
+        rowData.push(null);
+      } else if (typeof value === 'object' && 'text' in value) {
+        rowData.push((value as { text: string }).text);
+      } else {
+        rowData.push(value as string | number | boolean);
+      }
+    });
+    rawRows.push(rowData);
   });
   // Convert all cells to strings for consistency
   return rawRows.map((row) => 
@@ -410,7 +418,7 @@ export async function parseTrainingReport(buffer: Buffer, fileName: string): Pro
   // Try Excel first, then fall back to CSV
   if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) {
     try {
-      rowArrays = toRowArraysFromWorkbook(buffer);
+      rowArrays = await toRowArraysFromWorkbook(buffer);
     } catch (error) {
       // If Excel fails, try as CSV
       console.warn("Failed to parse as Excel, trying CSV:", error);
@@ -421,7 +429,7 @@ export async function parseTrainingReport(buffer: Buffer, fileName: string): Pro
   } else {
     // Try Excel first, then CSV
     try {
-      rowArrays = toRowArraysFromWorkbook(buffer);
+      rowArrays = await toRowArraysFromWorkbook(buffer);
     } catch (error) {
       console.warn("Failed to parse as Excel, trying CSV:", error);
       rowArrays = await toRowArraysFromCsv(buffer);
@@ -760,32 +768,35 @@ export type ParseMainReportResult = {
   metadata: ReportMetadata;
 };
 
-const parseWorkbookWithMetadata = (
+const parseWorkbookWithMetadata = async (
   buffer: Buffer,
   mapper: (row: RawRow) => MainReportRow | null
-): ParseMainReportResult => {
-  // Mitigate ReDoS vulnerability: limit file size to 10MB
+): Promise<ParseMainReportResult> => {
+  // Limit file size to 10MB
   const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
   if (buffer.length > MAX_FILE_SIZE) {
     throw new Error("File size exceeds maximum allowed size of 10MB");
   }
   
-  // Mitigate Prototype Pollution: use safe read options
-  const workbook = XLSX.read(buffer, { 
-    type: "buffer",
-    cellDates: false,
-    cellNF: false,
-    cellStyles: false,
-    sheetStubs: false
-  });
-  const sheetName = workbook.SheetNames[0];
-  const sheet = workbook.Sheets[sheetName];
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer);
+  const worksheet = workbook.worksheets[0];
   
-  // First, get raw row arrays to find the header row
-  const rowArrays = XLSX.utils.sheet_to_json<(string | number | boolean | null | undefined)[]>(sheet, { 
-    header: 1, 
-    blankrows: false,
-    defval: null 
+  // Convert worksheet to row arrays
+  const rowArrays: RowArray[] = [];
+  worksheet.eachRow((row) => {
+    const rowData: RowArray = [];
+    row.eachCell({ includeEmpty: true }, (cell) => {
+      const value = cell.value;
+      if (value === null || value === undefined) {
+        rowData.push(null);
+      } else if (typeof value === 'object' && 'text' in value) {
+        rowData.push((value as { text: string }).text);
+      } else {
+        rowData.push(value as string | number | boolean);
+      }
+    });
+    rowArrays.push(rowData);
   });
   
   if (rowArrays.length === 0) {
