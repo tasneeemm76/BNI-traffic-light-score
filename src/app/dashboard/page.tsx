@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { Card } from "@/components/ui/Card";
+import { DownloadReportButton } from "@/components/download-report-button";
 
 export const dynamic = "force-dynamic";
 
@@ -186,6 +187,9 @@ export default async function DashboardPage() {
               title={`Member Scores - ${periodLabel}`}
               subtitle={`${latestUpload.dataPoints.length} members • ${latestUpload.periodStart.toLocaleDateString()} – ${latestUpload.periodEnd.toLocaleDateString()}`}
             >
+              <div style={{ marginBottom: "var(--spacing-lg)", display: "flex", justifyContent: "flex-end" }}>
+                <DownloadReportButton upload={latestUpload} />
+              </div>
               <div className="table-container">
                 <table
                   className="table"
